@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { normalizeOptions, normalizeRoles, render, tagIndex } from '../lib/config.js';
-import { normalizeTitle, pickSession, titleSimilarity, wantedTitle } from '../lib/sessions.js';
+import { chooseTarget, normalizeTitle, pickSession, titleSimilarity, wantedTitle } from '../lib/sessions.js';
 
 const options = normalizeOptions({
   project: 'XDairy',
@@ -85,4 +85,21 @@ test('роли не путаются между собой', () => {
   assert.equal(pickSession(rows, 'XDairy | FrontEnd')?.id, 'fe');
   assert.equal(pickSession(rows, 'XDairy | BackEnd')?.id, 'be');
   assert.ok(titleSimilarity('XDairy | BackEnd', 'XDairy | FrontEnd') < 0.85);
+});
+test('запомненный таргет проверяется по заголовку: ошибочный матч не залипает', () => {
+  const rows = [
+    { id: 'orig', title: 'XDairy', updatedAt: 999 },
+    { id: 'te', title: 'XDairy | TestEngeneer', updatedAt: 5 },
+  ];
+  // В памяти был «XDairy» — это не тред роли, значит переискиваем.
+  const chosen = chooseTarget('te', rows, 'orig', options);
+  assert.equal(chosen.id, 'te');
+  assert.equal(chosen.moved, true);
+});
+
+test('переименованный тред с именем роли остаётся тем же', () => {
+  const rows = [{ id: 'live', title: 'XDairy | FrontEnd (после рестарта)' }];
+  const chosen = chooseTarget('fe', rows, 'live', options);
+  assert.equal(chosen.id, 'live');
+  assert.equal(chosen.moved, false);
 });
