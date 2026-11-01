@@ -21,12 +21,16 @@
         - agents
         - workspaceRegistry
       config:
-        enabled: true
+        # По умолчанию ВЫКЛЮЧЕН: включайте осознанно, после проверки в dry-run.
+        enabled: false
         # Папка outbox-чата (абсолютный путь или относительно корня воркспейса).
         chatDir: 5-tech-backlog/chat
         # Префикс заголовка сессий: "XDairy | Arch", "XDairy | BackEnd", …
         project: XDairy
         titleTemplate: "{project} | {role}"
+        # Как будить роль: live-only — только открытый тред (безопасно),
+        # resume — поднимать с диска (ломает реестр инструментов, не использовать).
+        wake: live-only
         # Файл чата -> роль. Значение: строка (название роли) или
         # { title, tag }: tag — то, что стоит после @ в сообщении.
         roles:
