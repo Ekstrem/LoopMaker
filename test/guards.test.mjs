@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';
+﻿import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { chooseTarget } from '../lib/sessions.js';
@@ -105,9 +105,11 @@ test('лимит кругов пары: третье письмо уходит �
   await stage.bridge.poll();
   const escalation = stage.sent.at(-1);
   assert.equal(escalation.sessionId, 'sess-tl');
-  assert.match(escalation.text, /переписка BackEnd ↔ FrontEnd превысила лимит/);
+  assert.match(escalation.text, /переписка BackEnd ↔ FrontEnd/);
   assert.match(escalation.text, /2 кругов за 10 мин/);
-  assert.match(escalation.text, /круг 3/);
+  // Указатель, а не пересказ: файлы названы, текста сообщений в уведомлении нет.
+  assert.match(escalation.text, /be\.md, fe\.md/);
+  assert.doesNotMatch(escalation.text, /круг 3/);
 });
 
 test('после эскалации пара заморожена и не подливает сообщения', async (t) => {
@@ -205,4 +207,45 @@ test('координатор не лимитируется: эскалация �
   assert.equal(stage.sent[0].sessionId, 'sess-tl');
   assert.match(stage.sent[0].text, /разбор 0/);
   assert.match(stage.sent[0].text, /разбор 2/);
+});
+/* ---------------- уведомление без копии текста ---------------- */
+
+test('notifyStyle=pointer: обычная доставка без текста сообщения', async (t) => {
+  const stage = await makeStage({
+    config: { notifyStyle: 'pointer' },
+    sessions: { fe: 'sess-fe' },
+  });
+  t.after(stage.cleanup);
+
+  await stage.bridge.start();
+  await stage.writeChat('be.md', '- [2026-11-01 10:00] → @FE: секретный текст\n');
+  await stage.bridge.poll();
+
+  assert.equal(stage.sent.length, 1);
+  assert.equal(
+    stage.sent[0].text,
+    'в чате be.md есть сообщение от BackEnd (2026-11-01 10:00) — посмотри файл',
+  );
+  assert.doesNotMatch(stage.sent[0].text, /секретный текст/);
+});
+
+test('notifyStyle=pointer: пачка тоже без текста, но со счётом', async (t) => {
+  const stage = await makeStage({
+    config: { notifyStyle: 'pointer' },
+    sessions: { fe: 'sess-fe' },
+  });
+  t.after(stage.cleanup);
+
+  await stage.bridge.start();
+  await stage.writeChat(
+    'be.md',
+    '- [2026-11-01 10:00] → @FE: раз\n- [2026-11-01 10:05] → @FE: два\n',
+  );
+  await stage.bridge.poll();
+
+  assert.equal(stage.sent.length, 1);
+  assert.equal(
+    stage.sent[0].text,
+    'в чате be.md есть сообщения от BackEnd — 2 шт. (последнее 2026-11-01 10:05) — посмотри файл',
+  );
 });
