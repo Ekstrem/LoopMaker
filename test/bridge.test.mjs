@@ -1,69 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile, appendFile } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import test from 'node:test';
 
-import { normalizeOptions } from '../lib/config.js';
 import { StateStore } from '../lib/state.js';
 import { ChatBridge } from '../lib/bridge.js';
-
-const silent = { debug() {}, info() {}, warn() {}, error() {} };
-
-/** Сцена: папка чата + состояние + фейковые сессии и отправка. */
-async function makeStage({ config = {}, sessions = {}, send } = {}) {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'loopmaker-test-'));
-  const chatDir = path.join(dir, 'chat');
-  await writeFile(path.join(dir, '.keep'), '', 'utf8').catch(() => {});
-  const { mkdir } = await import('node:fs/promises');
-  await mkdir(chatDir, { recursive: true });
-
-  const options = normalizeOptions(
-    {
-      project: 'XDairy',
-      chatDir,
-      pollMs: 1000,
-      stateFile: path.join(dir, 'state.json'),
-      roles: { be: 'BackEnd', fe: 'FrontEnd', tl: 'TechLead' },
-      ...config,
-    },
-    dir,
-  );
-
-  const sent = [];
-  const sessionMap = { ...sessions };
-  const bridge = new ChatBridge({
-    options,
-    logger: silent,
-    state: new StateStore({ file: options.stateFile, logger: silent }),
-    resolveSession: async (role) => sessionMap[role],
-    send: send ?? (async (sessionId, text) => { sent.push({ sessionId, text }); }),
-  });
-
-  const writeChat = (file, text) => writeFile(path.join(chatDir, file), text, 'utf8');
-  const appendChat = (file, text) => appendFile(path.join(chatDir, file), text, 'utf8');
-
-  return {
-    dir,
-    chatDir,
-    bridge,
-    options,
-    sent,
-    sessionMap,
-    writeChat,
-    appendChat,
-    /** Останавливаем мост и ждём запись состояния, иначе rm ловит EBUSY на Windows. */
-    cleanup: async () => {
-      bridge.stop();
-      try {
-        await bridge.state.flush();
-      } catch {
-        /* состояние могло не создаваться */
-      }
-      await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
-    },
-  };
-}
+import { makeStage, silent } from './helpers.mjs';
 
 test('история не доставляется при первом запуске, новые сообщения — доставляются', async (t) => {
   const stage = await makeStage({ sessions: { fe: 'sess-fe' } });
@@ -80,7 +20,6 @@ test('история не доставляется при первом запу�
   assert.equal(stage.sent[0].sessionId, 'sess-fe');
   assert.equal(stage.sent[0].text, 'сообщение от BackEnd: «новое сообщение»');
   assert.equal(stats.delivered, 1);
-  stage.bridge.stop();
 });
 
 test('повторный проход не отправляет то же сообщение дважды', async (t) => {
@@ -94,7 +33,6 @@ test('повторный проход не отправляет то же соо
   await stage.bridge.poll();
 
   assert.equal(stage.sent.length, 1);
-  stage.bridge.stop();
 });
 
 test('сообщение самому себе не доставляется', async (t) => {
@@ -106,7 +44,6 @@ test('сообщение самому себе не доставляется', a
   await stage.bridge.poll();
 
   assert.deepEqual(stage.sent, []);
-  stage.bridge.stop();
 });
 
 test('неизвестный адресат игнорируется', async (t) => {
@@ -118,7 +55,6 @@ test('неизвестный адресат игнорируется', async (t)
   await stage.bridge.poll();
 
   assert.deepEqual(stage.sent, []);
-  stage.bridge.stop();
 });
 
 test('@ALL по умолчанию не рассылается, с broadcast — всем кроме автора', async (t) => {
@@ -128,7 +64,6 @@ test('@ALL по умолчанию не рассылается, с broadcast —
   await off.writeChat('be.md', '- [2026-11-01 10:00] → @ALL: всем привет\n');
   await off.bridge.poll();
   assert.deepEqual(off.sent, []);
-  off.bridge.stop();
 
   const on = await makeStage({
     config: { broadcast: true },
@@ -139,7 +74,6 @@ test('@ALL по умолчанию не рассылается, с broadcast —
   await on.writeChat('be.md', '- [2026-11-01 10:00] → @ALL: всем привет\n');
   await on.bridge.poll();
   assert.deepEqual(on.sent.map((item) => item.sessionId).sort(), ['sess-fe', 'sess-tl']);
-  on.bridge.stop();
 });
 
 test('сессии нет -> сообщение ждёт в очереди и доставляется, когда сессия появилась', async (t) => {
@@ -151,13 +85,12 @@ test('сессии нет -> сообщение ждёт в очереди и д
   await stage.bridge.poll();
   assert.deepEqual(stage.sent, []);
 
-  stage.sessionMap.fe = 'sess-fe'; // сессию переименовали / открыли
+  stage.sessionMap.fe = 'sess-fe'; // сессию открыли/переименовали
   const stats = await stage.bridge.poll();
 
   assert.equal(stats.delivered, 1);
   assert.equal(stage.sent[0].sessionId, 'sess-fe');
   assert.equal(stage.bridge.state.pendingList().length, 0);
-  stage.bridge.stop();
 });
 
 test('ошибка отправки оставляет сообщение в очереди для повтора', async (t) => {
@@ -180,7 +113,6 @@ test('ошибка отправки оставляет сообщение в о�
   fail = false;
   await stage.bridge.poll();
   assert.equal(stage.sent.length, 1);
-  stage.bridge.stop();
 });
 
 test('несколько адресатов и шаблон сообщения настраиваются', async (t) => {
@@ -201,7 +133,6 @@ test('несколько адресатов и шаблон сообщения �
     '[2026-11-01 10:00] BackEnd → FrontEnd: первое',
     '[2026-11-01 10:01] BackEnd → TechLead: второе',
   ]);
-  stage.bridge.stop();
 });
 
 test('битый файл чата не ломает проход', async (t) => {
@@ -212,7 +143,6 @@ test('битый файл чата не ломает проход', async (t) =>
   await stage.writeChat('be.md', 'мусор без формата\n- [2026-11-01 10:00] → @FE: нормальное\n');
   await stage.bridge.poll();
   assert.equal(stage.sent.length, 1);
-  stage.bridge.stop();
 });
 
 test('очередь переживает перезапуск: состояние читается с диска', async (t) => {
@@ -222,10 +152,9 @@ test('очередь переживает перезапуск: состояни
   await stage.bridge.start();
   await stage.writeChat('be.md', '- [2026-11-01 10:00] → @FE: переживу рестарт\n');
   await stage.bridge.poll();
-  stage.bridge.stop();
   await stage.bridge.state.flush();
+  stage.bridge.stop();
 
-  // Новый экземпляр моста с тем же файлом состояния.
   const revived = new ChatBridge({
     options: stage.options,
     logger: silent,

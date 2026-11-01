@@ -1,6 +1,6 @@
-{
+﻿{
   "name": "dsh-loopmaker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DSH plugin: доставляет сообщения из outbox-чата петли в сессию адресата и тем самым оживляет её",
   "keywords": [
     "dsh",
