@@ -33,7 +33,7 @@
     "po": "po", "01-product": "po", "02-cjm": "po"
   },
 
-  "shared": ["README.md", "CHANGELOG.md", ".gitignore", ".gitattributes"],
+  "shared": ["README.md", "CHANGELOG.md", ".gitignore", ".gitattributes", "loop.config.json"],
 
   "zones": {
     "po": {

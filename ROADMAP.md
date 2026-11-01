@@ -11,7 +11,9 @@
 - Пачка вместо строчки (`batchWindowMs`), лимит кругов пары (`maxHops`) и бюджета
   роли (`maxPerHour`), эскалация координатору с заморозкой пары.
 - Скрипты петли: `check_paths.py` (зоны ролей), `stats.py` (статусы), `merge_chat.py`,
-  `chat_inbox.py`.
+  `chat_inbox.py`, `sweep.py` (обход: задачи без движения + «обещано, но не начато»).
+- Шаблон часового обхода — `templates/sweep.yml`: `schedule` + `workflow_dispatch`,
+  один открытый issue-сигнал, сам закрывается, когда чисто. Проверено в XDiary.
 - Отправка в Telegram: код есть (`lib/telegram.js`), **выключено** (`tgEnabled: false`).
 
 ## Дальше

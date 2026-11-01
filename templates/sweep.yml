@@ -1,0 +1,92 @@
+name: Sweep (часовой обход петли)
+
+# Шаблон для нового проекта. Скопируйте в <проект>/.github/workflows/sweep.yml
+# и проверьте два места: LOOPMAKER_REF и путь к конфигу (loop.config.json в корне).
+#
+# Что делает: раз в час (и по кнопке) запускает tools/sweep.py из LoopMaker.
+# Он находит «задачи без движения» и «обещано, но не начато», после чего
+# workflow держит ОДИН открытый issue с меткой `sweep` — это и уведомление,
+# и готовый список работы. Когда находок нет, issue закрывается сам.
+
+on:
+  schedule:
+    # ┌ минута (0-59)  ┌ час (0-23)  ┌ день  ┌ месяц  ┌ день недели
+    - cron: "7 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: "sweep"
+  cancel-in-progress: true
+
+env:
+  # Пин на тег/коммит, когда LoopMaker стабилизируется: ref: v0.2.0
+  LOOPMAKER_REF: main
+  # Поменяйте, если LoopMaker форкнут: owner/repo
+  LOOPMAKER_REPO: Ekstrem/LoopMaker
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: "Checkout проекта (возраст задачи = дата коммита файла)"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout LoopMaker (движок обхода)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.LOOPMAKER_REPO }}
+          ref: ${{ env.LOOPMAKER_REF }}
+          path: .loopmaker
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Обход (задачи без движения + «обещано, но не начато»)
+        id: scan
+        run: |
+          set +e
+          python .loopmaker/tools/sweep.py --config loop.config.json --fail-on-stale > sweep.md
+          rc=$?
+          set -e
+          echo "findings-rc=$rc"
+          {
+            echo "## Результат обхода"
+            echo
+            cat sweep.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Обновить issue-сигнал
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh label create sweep --color ededed --description "сигнал часового обхода петли" 2>/dev/null || true
+          num=$(gh issue list --label sweep --state open --json number --jq '.[0].number // empty')
+
+          if [ "${{ steps.scan.outputs.rc }}" = "0" ]; then
+            if [ -n "$num" ]; then
+              gh issue close "$num" --comment "Находок нет, задач без движения не обнаружено."
+            fi
+            echo "чисто"
+            exit 0
+          fi
+
+          if [ -z "$num" ]; then
+            gh issue create \
+              --title "[sweep] Обход петли: есть задачи без движения" \
+              --label sweep \
+              --body-file sweep.md
+          else
+            gh issue edit "$num" --body-file sweep.md
+            gh issue comment "$num" --body "обновлено: $(date -u '+%Y-%m-%d %H:%M') UTC"
+          fi
