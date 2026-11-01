@@ -1,0 +1,51 @@
+# DSH bundle patch — dsh-loopmaker
+#
+# Мост «outbox-чат петли → сессия роли»: плагин следит за файлами чата
+# (`<chatDir>/*.md`), находит строки вида
+#
+#     - [2026-11-01 10:00] → @FE: посмотри контракт
+#
+# и доставляет адресату в его сессию сообщение «сообщение от BackEnd: «…»»,
+# то есть оживляет тред роли без ручного переключения.
+#
+# Значения ниже — рабочий пример под XDiary. Свой проект: поправьте chatDir,
+# project, roles и (если заголовки сессий не по шаблону) sessions.
+
+- insert:
+    - id: loop-chat
+      name: dsh-loopmaker
+      # Сервисы, нужные на старте. `sessionPersistence` и `sessionProjectionCache`
+      # резолвятся лениво внутри плагина: без них мост не падает, а не находит
+      # сессию и пишет это в лог.
+      inject:
+        - agents
+        - workspaceRegistry
+      config:
+        enabled: true
+        # Папка outbox-чата (абсолютный путь или относительно корня воркспейса).
+        chatDir: 5-tech-backlog/chat
+        # Префикс заголовка сессий: "XDairy | Arch", "XDairy | BackEnd", …
+        project: XDairy
+        titleTemplate: "{project} | {role}"
+        # Файл чата -> роль. Значение: строка (название роли) или
+        # { title, tag }: tag — то, что стоит после @ в сообщении.
+        roles:
+          be: BackEnd
+          fe: FrontEnd
+          do: DevOps
+          te: TestEngineer
+          ar: Architect
+          tl: TechLead
+          po: PO
+        # Явные переопределения, если заголовок сессии не собирается шаблоном.
+        sessions: {}
+        # Текст, который получает адресат. {from} {to} {text} {ts} {file}.
+        messageTemplate: "сообщение от {from}: «{text}»"
+        # История при первом запуске: skip — не будить сессии старыми строками,
+        # deliver — доставить всё, что есть в чате.
+        history: skip
+        pollMs: 5000
+        # @ALL рассылается всем ролям, кроме автора. По умолчанию выключено,
+        # чтобы одно сообщение не будило шесть тредов.
+        broadcast: false
+        dryRun: false

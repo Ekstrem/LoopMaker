@@ -11,3 +11,6 @@ bin/
 obj/
 .DS_Store
 Thumbs.db
+
+# плагин
+node_modules/
