@@ -249,7 +249,7 @@ test('notifyStyle=pointer: пачка тоже без текста, но со с
     'в чате be.md есть сообщения от BackEnd — 2 шт. (последнее 2026-11-01 10:05) — посмотри файл',
   );
 });
-test('resetRuntime чистит счётчики, но помнит просмотренное', async () => {
+test('resetRuntime чистит счётчики, но помнит просмотренное', async (t) => {
   const stage = await makeStage({ sessions: { fe: 'sess-fe' } });
   t.after(stage.cleanup);
 
