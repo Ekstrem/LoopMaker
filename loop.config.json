@@ -1,0 +1,84 @@
+{
+  "_comment_1": "Единственный файл, который правится под проект. Формат путей: 'dir/*' = вся папка (поддерево), иначе — точный файл.",
+  "_comment_2": "core = своя папка роли (то ограничение, которое вы задаёте). service = своя папка задач и свой outbox в чате.",
+  "_comment_3": "Пример ниже — рабочие зоны проекта XDiary (6 ролей, 40 задач). Меняйте под свой проект.",
+
+  "backlog": "5-backlog",
+  "coordinator": "tl",
+  "statuses": ["Открыта", "В работе", "На проверке", "Закрыта", "Отклонена"],
+
+  "readme": {
+    "file": "README.md",
+    "start": "<!-- stats:start -->",
+    "end": "<!-- stats:end -->"
+  },
+
+  "role_titles": {
+    "po": "PO",
+    "ar": "Architect",
+    "tl": "TechLead",
+    "be": "BackEnd",
+    "fe": "FrontEnd",
+    "do": "DevOps",
+    "te": "TestEngineer"
+  },
+
+  "aliases": {
+    "be": "be", "backend": "be", "back-end": "be", "6-code": "be", "6-service": "be",
+    "fe": "fe", "frontend": "fe", "front-end": "fe", "8-front": "fe",
+    "do": "do", "devops": "do", "7-deploy": "do",
+    "te": "te", "tester": "te", "test": "te", "tests": "te", "9-tests": "te",
+    "ar": "ar", "arch": "ar", "architect": "ar", "03-domain": "ar", "04-architecture": "ar",
+    "tl": "tl", "techlead": "tl", "5-backlog": "tl",
+    "po": "po", "01-product": "po", "02-cjm": "po"
+  },
+
+  "shared": ["README.md", "CHANGELOG.md", ".gitignore", ".gitattributes"],
+
+  "zones": {
+    "po": {
+      "core": ["01-product/*"],
+      "service": ["5-backlog/chat/po.md"]
+    },
+    "ar": {
+      "core": ["03-domain/*", "04-architecture/*"],
+      "service": ["5-backlog/arch/*", "5-backlog/chat/ar.md"]
+    },
+    "be": {
+      "core": ["6-code/*"],
+      "service": ["0-issues/*", "5-backlog/back-end/*", "5-backlog/chat/be.md"]
+    },
+    "fe": {
+      "core": ["8-front/*"],
+      "service": ["5-backlog/front-end/*", "5-backlog/chat/fe.md"]
+    },
+    "do": {
+      "core": ["7-deploy/*"],
+      "service": ["tools/*", ".github/*", "5-backlog/devops/*", "5-backlog/chat/do.md"]
+    },
+    "te": {
+      "core": ["9-tests/*"],
+      "service": ["5-backlog/tester/*", "5-backlog/chat/te.md"]
+    }
+  },
+
+  "coordinator_zone": [
+    "5-backlog/README.md",
+    "5-backlog/arch/*",
+    "5-backlog/back-end/*",
+    "5-backlog/front-end/*",
+    "5-backlog/devops/*",
+    "5-backlog/tester/*",
+    "5-backlog/chat/tl.md",
+    "5-backlog/chat/README.md",
+    "tools/*"
+  ],
+
+  "task_folders": [
+    { "folder": "back-end", "title": "back-end" },
+    { "folder": "front-end", "title": "front-end" },
+    { "folder": "devops", "title": "devops" },
+    { "folder": "tester", "title": "tester" },
+    { "folder": "arch", "title": "arch" }
+  ]
+}

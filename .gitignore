@@ -1,0 +1,13 @@
+﻿# сгенерированное (пересобирается скриптами)
+_dialogue.md
+**/chat/_dialogue.md
+
+# секреты и мусор
+.env
+.env.*
+__pycache__/
+*.pyc
+bin/
+obj/
+.DS_Store
+Thumbs.db

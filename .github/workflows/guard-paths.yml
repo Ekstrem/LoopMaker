@@ -1,0 +1,43 @@
+name: Guard (роль не вышла за зону)
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (нужна вся история для range-diff)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Проверить зоны ролей
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          set -uo pipefail
+          after="${AFTER:-}"
+          if [ -z "$after" ] || ! git cat-file -e "${after}^{commit}" 2>/dev/null; then
+            after=HEAD
+          fi
+          if [ -z "${BEFORE:-}" ] \
+             || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            range="${after}~1..${after}"
+          else
+            range="${BEFORE}..${after}"
+          fi
+          echo "range: ${range}"
+          python tools/check_paths.py --range "$range"
