@@ -315,3 +315,18 @@ test('одна строка с двумя адресатами доставля�
   assert.equal(stage.sent.length, 2, 'по сообщению каждому адресату');
   assert.deepEqual(stage.sent.map((row) => row.sessionId).sort(), ['sess-do', 'sess-te']);
 });
+test('служебный _lint.md доставляет замечание автору', async (t) => {
+  const stage = await makeStage({ sessions: { be: 'sess-be' } });
+  t.after(stage.cleanup);
+
+  await stage.bridge.start();
+  await stage.writeChat(
+    '_lint.md',
+    '- [2026-11-03 18:00] → @BE: строка не распознана, перепиши\n',
+  );
+  await stage.bridge.poll();
+
+  assert.equal(stage.sent.length, 1);
+  assert.equal(stage.sent[0].sessionId, 'sess-be');
+  assert.match(stage.sent[0].text, /строка не распознана/);
+});
