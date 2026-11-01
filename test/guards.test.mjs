@@ -249,3 +249,19 @@ test('notifyStyle=pointer: пачка тоже без текста, но со с
     'в чате be.md есть сообщения от BackEnd — 2 шт. (последнее 2026-11-01 10:05) — посмотри файл',
   );
 });
+test('resetRuntime чистит счётчики, но помнит просмотренное', async () => {
+  const stage = await makeStage({ sessions: { fe: 'sess-fe' } });
+  t.after(stage.cleanup);
+
+  await stage.bridge.start();
+  await stage.writeChat('be.md', '- [2026-11-01 10:00] → @FE: раз\n');
+  await stage.bridge.poll();
+  await stage.bridge.state.setTarget('fe', 'sess-fe');
+
+  const cleared = stage.bridge.state.resetRuntime();
+  assert.equal(cleared.deliveries, 1);
+  assert.equal(cleared.targets, 1);
+  assert.deepEqual(stage.bridge.state.data.deliveries, []);
+  assert.equal(stage.bridge.state.targetFor('fe'), undefined);
+  assert.ok(stage.bridge.state.data.seen.length > 0, 'seen сохраняется');
+});
