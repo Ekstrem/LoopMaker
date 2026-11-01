@@ -265,3 +265,39 @@ test('resetRuntime чистит счётчики, но помнит просмо
   assert.equal(stage.bridge.state.targetFor('fe'), undefined);
   assert.ok(stage.bridge.state.data.seen.length > 0, 'seen сохраняется');
 });
+test('пары с координатором не уходят в эскалацию: он раздаёт задачи, а не звенит', async (t) => {
+  const stage = await makeStage({
+    config: { maxHops: 2, hopWindowMs: 600000 },
+    sessions: { fe: 'sess-fe', tl: 'sess-tl' },
+  });
+  t.after(stage.cleanup);
+
+  await stage.bridge.start();
+  // TechLead пишет FE четыре раза подряд — это нормальная координация.
+  for (let index = 0; index < 4; index += 1) {
+    await stage.appendChat('tl.md', `- [2026-11-01 10:0${index}] → @FE: задача ${index}\n`);
+    await stage.bridge.poll();
+  }
+
+  assert.equal(stage.sent.length, 4, 'все четыре доставки прошли');
+  assert.equal(stage.bridge.state.pendingList().length, 0);
+  assert.equal(Object.keys(stage.bridge.state.data.frozen ?? {}).length, 0, 'ничего не заморожено');
+});
+
+test('пинг-понг между исполнителями по-прежнему тормозится', async (t) => {
+  const stage = await makeStage({
+    config: { maxHops: 2, hopWindowMs: 600000 },
+    sessions: { fe: 'sess-fe', be: 'sess-be', tl: 'sess-tl' },
+  });
+  t.after(stage.cleanup);
+
+  await stage.bridge.start();
+  for (let index = 0; index < 3; index += 1) {
+    await stage.appendChat('be.md', `- [2026-11-01 10:0${index}] → @FE: вопрос ${index}\n`);
+    await stage.bridge.poll();
+  }
+
+  assert.equal(stage.sent.length, 2, 'две доставки, третья — эскалация');
+  assert.equal(stage.bridge.state.pendingList().length, 1, 'эскалация ждёт координатора');
+  assert.ok(Object.keys(stage.bridge.state.data.frozen ?? {}).length > 0, 'пара заморожена');
+});
