@@ -169,3 +169,32 @@ test('очередь переживает перезапуск: состояни
   assert.equal(stage.sent[0].text, 'сообщение от BackEnd: «переживу рестарт»');
   revived.stop();
 });
+test('после перезапуска история не переотправляется', async (t) => {
+  const stage = await makeStage({ sessions: { fe: 'sess-fe' } });
+  t.after(stage.cleanup);
+
+  // Первый «запуск»: история помечена просмотренной.
+  await stage.writeChat('be.md', '- [2026-11-01 09:00] → @FE: старое\n');
+  await stage.bridge.start();
+  assert.deepEqual(stage.sent, []);
+  await stage.bridge.state.flush();
+  stage.bridge.stop();
+
+  // Второй «запуск» того же состояния: та же история не должна уйти в сессию.
+  const revived = new ChatBridge({
+    options: stage.options,
+    logger: silent,
+    state: new StateStore({ file: stage.options.stateFile, logger: silent }),
+    resolveSession: async (role) => (role === 'fe' ? 'sess-fe' : undefined),
+    send: async (sessionId, text) => { stage.sent.push({ sessionId, text }); },
+  });
+  await revived.start();
+  await revived.poll();
+  assert.deepEqual(stage.sent, [], 'рестарт не будит роль историей');
+
+  // А новое сообщение после рестарта — доставляется.
+  await stage.appendChat('be.md', '- [2026-11-01 10:00] → @FE: новое\n');
+  await revived.poll();
+  assert.equal(stage.sent.length, 1);
+  revived.stop();
+});

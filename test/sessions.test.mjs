@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { normalizeOptions, normalizeRoles, render, tagIndex } from '../lib/config.js';
-import { normalizeTitle, pickSession, wantedTitle } from '../lib/sessions.js';
+import { normalizeTitle, pickSession, titleSimilarity, wantedTitle } from '../lib/sessions.js';
 
 const options = normalizeOptions({
   project: 'XDairy',
@@ -64,4 +64,25 @@ test('render подставляет известные поля и не трог
     render('от {from}: «{text}» ({nope})', { from: 'BackEnd', text: 'привет' }),
     'от BackEnd: «привет» ({nope})',
   );
+});
+test('опечатка в заголовке прощается похожестью', () => {
+  const rows = [{ id: 'te', title: 'XDairy | TestEngeneer', updatedAt: 5 }];
+  assert.equal(pickSession(rows, 'XDairy | TestEngineer')?.id, 'te');
+  assert.ok(titleSimilarity('XDairy | TestEngeneer', 'XDairy | TestEngineer') > 0.9);
+});
+
+test('общий тред проекта не подменяет роль', () => {
+  const rows = [{ id: 'orig', title: 'XDairy', updatedAt: 999 }];
+  assert.equal(pickSession(rows, 'XDairy | TestEngineer'), undefined);
+  assert.equal(pickSession(rows, 'XDairy | FrontEnd'), undefined);
+});
+
+test('роли не путаются между собой', () => {
+  const rows = [
+    { id: 'be', title: 'XDairy | BackEnd', updatedAt: 10 },
+    { id: 'fe', title: 'XDairy | FrontEnd', updatedAt: 9 },
+  ];
+  assert.equal(pickSession(rows, 'XDairy | FrontEnd')?.id, 'fe');
+  assert.equal(pickSession(rows, 'XDairy | BackEnd')?.id, 'be');
+  assert.ok(titleSimilarity('XDairy | BackEnd', 'XDairy | FrontEnd') < 0.85);
 });
