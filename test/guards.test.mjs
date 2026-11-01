@@ -301,3 +301,17 @@ test('пинг-понг между исполнителями по-прежне�
   assert.equal(stage.bridge.state.pendingList().length, 1, 'эскалация ждёт координатора');
   assert.ok(Object.keys(stage.bridge.state.data.frozen ?? {}).length > 0, 'пара заморожена');
 });
+test('одна строка с двумя адресатами доставляется обоим', async (t) => {
+  const stage = await makeStage({
+    config: { roles: { be: 'BackEnd', do: 'DevOps', te: 'TestEngineer' } },
+    sessions: { do: 'sess-do', te: 'sess-te' },
+  });
+  t.after(stage.cleanup);
+
+  await stage.bridge.start();
+  await stage.writeChat('be.md', '- [2026-11-01 10:00] → @DO + @TE: проверьте оба\n');
+  await stage.bridge.poll();
+
+  assert.equal(stage.sent.length, 2, 'по сообщению каждому адресату');
+  assert.deepEqual(stage.sent.map((row) => row.sessionId).sort(), ['sess-do', 'sess-te']);
+});

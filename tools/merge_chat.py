@@ -18,7 +18,7 @@ import sys
 
 CONFIG = "loop.config.json"
 # - [2026-10-30 15:20] → @FE: текст
-MSG = re.compile(r"^-\s*\[([^\]]+)\]\s*→\s*@?([^\s:]+)\s*:\s*(.+)$")
+MSG = re.compile(r"^-\s*(?:\[([^\]]+)\]|(\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}))\s*(?:→|->|=>)\s*@?([^:]+?)\s*:\s*(.+)$")
 SKIP = {"README.md", "_dialogue.md"}
 
 
@@ -70,8 +70,8 @@ def main():
             for line in f:
                 m = MSG.match(line.strip())
                 if m:
-                    messages.append((m.group(1).strip(), src, m.group(2).strip(),
-                                     m.group(3).strip()))
+                    ts = (m.group(1) or m.group(2) or "").strip()
+                    messages.append((ts, src, m.group(3).strip(), m.group(4).strip()))
     messages.sort(key=lambda x: x[0])
 
     lines = [

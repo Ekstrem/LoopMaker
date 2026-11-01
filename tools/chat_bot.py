@@ -33,7 +33,7 @@ ENV_FILE = os.path.join(os.path.expanduser("~"), ".dsh", ".env")
 API = "https://api.telegram.org/bot%s/%s"
 
 # - [2026-11-01 10:00] → @FE: текст
-LINE = re.compile(r"^-\s*\[([^\]]+)\]\s*(?:→|->|=>)\s*@([^\s:@]+)\s*:\s*(.+)$")
+LINE = re.compile(r"^-\s*(?:\[([^\]]+)\]|(\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}))\s*(?:→|->|=>)\s*@?([^:]+?)\s*:\s*(.+)$")
 SKIP_FILES = {"readme.md", "_dialogue.md"}
 MAX_SEEN = 5000
 CHUNK = 3800
@@ -125,9 +125,9 @@ def read_chat(config):
                 if not match:
                     continue
                 item = {
-                    "ts": match.group(1).strip(),
-                    "to": match.group(2).strip(),
-                    "text": match.group(3).strip(),
+                    "ts": (match.group(1) or match.group(2) or "").strip(),
+                    "to": match.group(3).strip(),
+                    "text": match.group(4).strip(),
                 }
                 if not item["text"]:
                     continue
