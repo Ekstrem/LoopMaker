@@ -80,5 +80,17 @@
     { "folder": "devops", "title": "devops" },
     { "folder": "tester", "title": "tester" },
     { "folder": "arch", "title": "arch" }
-  ]
+  ],
+
+  "_comment_secrets": "Что сканирует tools/check_secrets.py. По умолчанию — чат, задачи и корневые доки: именно там утекают секреты, и именно эти файлы коммитятся.",
+  "secrets": {
+    "paths": [
+      "5-backlog/chat/*.md",
+      "5-backlog/**/*.md",
+      "README.md",
+      "CHANGELOG.md",
+      "AGENTS.md"
+    ],
+    "skip": ["_dialogue.md", "_lint.md"]
+  }
 }
