@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Таблица статусов задач для README (по loop.config.json).
 
 Источник истины — поле `**Статус:**` в `<backlog>/<роль>/*.md`.
@@ -34,7 +34,7 @@ def load_config(path=None):
     path = path or os.path.join(repo_root(), CONFIG)
     if not os.path.exists(path):
         sys.exit("stats: нет %s — это карта проекта (см. AGENTS.md §8)" % CONFIG)
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:
         return json.load(f)
 
 
@@ -64,7 +64,7 @@ def normalize(raw, statuses):
 
 
 def task_status(path, statuses):
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:
         for line in f:
             m = STATUS_RE.search(line)
             if m:
@@ -110,7 +110,7 @@ def read_block(cfg):
     readme = (cfg.get("readme") or {}).get("file", "README.md")
     start = (cfg.get("readme") or {}).get("start", "<!-- stats:start -->")
     end = (cfg.get("readme") or {}).get("end", "<!-- stats:end -->")
-    with open(readme, encoding="utf-8", newline="") as f:
+    with open(readme, encoding="utf-8-sig", newline="") as f:
         text = f.read().replace("\r\n", "\n")
     if start not in text or end not in text:
         sys.exit("%s: нет маркеров %s ... %s" % (readme, start, end))

@@ -14,9 +14,11 @@
    зоны ролей, папка бэклога, статусы, порядок папок задач.
 3. **[templates/](templates/)** — что вставить в свой репозиторий: формат задачи,
    мини-`AGENTS.md` для папки-зоны, шаблон проектного `AGENTS.md`.
-4. **[tools/](tools/)** — два скрипта, работающие от конфига:
+4. **[tools/](tools/)** — четыре скрипта, работающие от конфига:
    - `check_paths.py` — guard: роль не вышла за свою папку (по префиксу коммита);
-   - `stats.py` — таблица статусов задач в README (`--write` / `--check`).
+   - `stats.py` — таблица статусов задач в README (`--write` / `--check`);
+   - `merge_chat.py` — сводка диалога из outbox-файлов;
+   - `chat_inbox.py` — гейт координатора: есть ли вопрос без ответа.
 
 ## Быстрый старт
 
@@ -24,6 +26,8 @@
 python tools/check_paths.py --zones      # карта зон из loop.config.json
 python tools/check_paths.py --range HEAD~20..HEAD --report-only   # аудит истории
 python tools/stats.py --write            # обновить таблицу в README
+python tools/merge_chat.py               # собрать сводку чата
+python tools/chat_inbox.py               # вопросы к @TL без ответа (код 1 = есть)
 ```
 
 ## Принципы (коротко)
