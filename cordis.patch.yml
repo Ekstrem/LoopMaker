@@ -73,3 +73,14 @@
         freezeMs: 3600000
         # TTL очереди должен быть больше freezeMs, иначе накопленное за разбор истечёт.
         pendingTtlMs: 7200000
+
+        # ---------------- уведомления в Telegram ----------------
+        # Только отправка: бот ничего не поллит, поэтому не конфликтует с другими.
+        # Токен кладётся в ~/.dsh/.env под именем из tgTokenEnv.
+        tgEnabled: false
+        tgTokenEnv: KITCHEN_BOT_TOKEN
+        # Пусто — chat id определится по первому сообщению боту (/start).
+        tgChatId: ''
+        tgEveryMinutes: 2
+        tgMaxBuffer: 15
+        tgTitle: Чат ролей

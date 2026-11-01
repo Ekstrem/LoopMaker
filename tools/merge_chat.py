@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Собрать диалог ролей: <backlog>/chat/*.md (outbox) -> chat/_dialogue.md.
 
 Outbox-файлы — источник правды (каждая роль пишет только в свой файл).

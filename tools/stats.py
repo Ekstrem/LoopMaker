@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Таблица статусов задач для README (по loop.config.json).
 
 Источник истины — поле `**Статус:**` в `<backlog>/<роль>/*.md`.

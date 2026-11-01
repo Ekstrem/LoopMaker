@@ -1,0 +1,25 @@
+{
+  "_comment": "Настройки Telegram-бота, который присылает историю чата ролей. Правьте под свой проект.",
+
+  "chatDir": "C:/Users/About/Documents/GitHub/XDiary/5-tech-backlog/chat",
+  "tokenEnv": "LOOPMAKER_BOT_TOKEN",
+
+  "_allowedUsers": "Telegram user id, которым разрешено общаться с ботом. Пусто — первый /start станет владельцем.",
+  "allowedUsers": [],
+
+  "defaultLimit": 30,
+  "maxLimit": 200,
+  "pollTimeoutSec": 25,
+  "digestMinutes": 15,
+
+  "_roles": "Имя файла чата -> как называть роль в сообщениях.",
+  "roles": {
+    "be": "BackEnd",
+    "fe": "FrontEnd",
+    "do": "DevOps",
+    "te": "TestEngineer",
+    "ar": "Architect",
+    "tl": "TechLead",
+    "po": "PO"
+  }
+}

@@ -12,7 +12,7 @@ import test from 'node:test';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.obsidian']);
-const EXTENSIONS = ['.js', '.mjs', '.json', '.yml', '.yaml', '.md'];
+const EXTENSIONS = ['.js', '.mjs', '.json', '.yml', '.yaml', '.md', '.py', '.cmd', '.ps1'];
 
 async function walk(dir) {
   const found = [];
