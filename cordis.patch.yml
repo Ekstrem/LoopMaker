@@ -87,8 +87,9 @@
         # с другими потребителями токена. Токен — в ~/.dsh/.env под tgTokenEnv.
         tgEnabled: true
         tgTokenEnv: KITCHEN_BOT_TOKEN
-        # Пусто — chat id определится по первому сообщению боту (/start).
-        tgChatId: ''
+        # Чат Ekstrem с ботом @XDairyKitchenChatBot (личный чат: id = user id).
+        # Пусто — определялся бы по /start; явное значение надёжнее.
+        tgChatId: '211320390'
         tgEveryMinutes: 2
         tgMaxBuffer: 15
         tgTitle: Чат ролей
