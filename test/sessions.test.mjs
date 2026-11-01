@@ -2,7 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { normalizeOptions, normalizeRoles, render, tagIndex } from '../lib/config.js';
-import { chooseTarget, normalizeTitle, pickSession, titleSimilarity, wantedTitle } from '../lib/sessions.js';
+import {
+  chooseTarget,
+  normalizeTitle,
+  pickSession,
+  segmentPrefixMatch,
+  titleSimilarity,
+  titleMatches,
+  wantedTitle,
+} from '../lib/sessions.js';
 
 const options = normalizeOptions({
   project: 'XDairy',
@@ -102,4 +110,17 @@ test('переименованный тред с именем роли оста�
   const chosen = chooseTarget('fe', rows, 'live', options);
   assert.equal(chosen.id, 'live');
   assert.equal(chosen.moved, false);
+});
+test('сокращение вместо полного слова находится: Arch / Architect', () => {
+  const rows = [{ id: 'ar', title: 'XDairy | Arch', updatedAt: 3 }];
+  assert.equal(pickSession(rows, 'XDairy | Architect')?.id, 'ar');
+  assert.ok(segmentPrefixMatch('XDairy | Arch', 'XDairy | Architect'));
+  assert.ok(titleMatches('XDairy | Arch', 'XDairy | Architect'));
+});
+
+test('сокращение не путает роли', () => {
+  assert.equal(segmentPrefixMatch('XDairy | BackEnd', 'XDairy | FrontEnd'), false);
+  assert.equal(pickSession([{ id: 'be', title: 'XDairy | BackEnd' }], 'XDairy | FrontEnd'), undefined);
+  // «XDairy» — один сегмент против двух, правило не срабатывает
+  assert.equal(segmentPrefixMatch('XDairy', 'XDairy | Architect'), false);
 });
