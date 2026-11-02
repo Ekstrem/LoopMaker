@@ -187,15 +187,51 @@ def chat_max_stamp(chat_dir):
     return best
 
 
+def find_exact_dups(chat_dir):
+    """Точные дубли строк в одном outbox: mesma текст, разные метки.
+
+    Зачем: роль может «пере-отправить» сообщение, чтобы вывести его из прошлого —
+    и в файле появляются две копии. Точная копия — всегда ошибка (одна строка = одно
+    сообщение), в отличие от пере-отправки с другим текстом.
+    """
+    out = []
+    for name in sorted(os.listdir(chat_dir)):
+        if not name.endswith(".md"):
+            continue
+        seen = {}
+        path = os.path.join(chat_dir, name)
+        with open(path, encoding="utf-8-sig") as f:
+            for no, line in enumerate(f, 1):
+                s = line.strip()
+                m = STRICT.match(s) or TOLERANT_ANY.match(s)
+                if not m:
+                    continue
+                body = s.split(":", 1)[-1].strip()
+                key = hashlib.sha1(body.encode("utf-8")).hexdigest()
+                if key in seen:
+                    out.append((name, seen[key][0], no, body[:70]))
+                else:
+                    seen[key] = (no, body)
+    return out
+
 def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0, use_clock=True):
     """Метки времени: в будущем (часы врут) и немонотонность внутри файла.
 
     Возвращает [(файл, метка, вид)], вид — "future" или "order".
     Не ошибка формата: старые файлы писались «по памяти» и уехали вперёд,
     поэтому по умолчанию это предупреждения (см. --strict-times).
+
+    Две шкалы, и их нельзя путать (иначе правило «максимум по чату + 1 минута»
+    невыполнимо):
+      * ПРОВЕРЯЕМАЯ зона — строки после маркера «метка = часы машины»; только они
+        могут получить вердикт "future".
+      * ОПОРА — максимум по ВСЕМУ чату, включая легаси до маркера: другие роли
+        пишут в своей зоне, и если опора смотрит только в проверяемую зону,
+        любая свежая метка выглядит «впереди» на дни.
     """
     future, order = [], []
     collected = []
+    global_max = {}
     for name in sorted(os.listdir(chat_dir)):
         if not name.endswith(".md") or name.lower() in SKIP:
             continue
@@ -203,16 +239,12 @@ def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0, use
         if role not in known_roles:
             continue
         prev = None
-        # Проверяем только «новую шкалу»: всё, что до строки-маркера — исторический
-        # легаси (метки писались «по памяти» и уехали вперёд). Нет маркера — проверяем всё.
         new_scale = False
         with open(os.path.join(chat_dir, name), encoding="utf-8-sig") as handle:
             for line in handle:
                 if "метка = часы машины" in line:
                     new_scale = True
                     prev = None
-                    continue
-                if not new_scale:
                     continue
                 m = TS_CANON.match(line.strip())
                 if not m:
@@ -222,32 +254,25 @@ def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0, use
                     ts = datetime.datetime.strptime(raw, "%Y-%m-%d %H:%M")
                 except ValueError:
                     continue
+                if ts > global_max.get(name, ts):
+                    global_max[name] = ts
+                if not new_scale:
+                    continue
                 if prev is not None and ts < prev:
                     order.append((name, raw, prev.strftime("%Y-%m-%d %H:%M")))
                 prev = ts
                 collected.append((name, raw, ts))
-    # PDR-21 (@TL 02:45): в CI часы раннера — UTC, а чат пишется в MSK(+3).
-    # Сравнивать с now() бессмысленно: любая местная метка выглядит «будущим».
-    #
-    # Важно, какую опору брать. «Максимум по чату» НЕ работает: опечатка сама
-    # становится максимумом и никогда не флагуется (проверено — метка «+2 дня»
-    # прошла молча). Поэтому опора для файла — максимум по ОСТАЛЬНЫМ файлам:
-    # роль, уехавшая вперёд относительно всех, ловится, а часовой пояс — нет.
-    per_file = {}
-    for name, _raw, ts in collected:
-        if ts > per_file.get(name, ts):
-            per_file[name] = ts
+
     for name, raw, ts in collected:
         if use_clock:
             reference = now + datetime.timedelta(hours=shift_hours)
         else:
-            others = [v for k, v in per_file.items() if k != name]
+            others = [v for k, v in global_max.items() if k != name]
             reference = max(others) if others else now
         if ts > reference + datetime.timedelta(minutes=tolerance_min):
             lag = ts - reference
             future.append((name, raw, int(lag.total_seconds() // 3600)))
     return future, order
-
 
 def notice(role, titles, line, now):
     author = titles.get(role, role.upper())
