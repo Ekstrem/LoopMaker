@@ -187,6 +187,45 @@ def chat_max_stamp(chat_dir):
     return best
 
 
+def find_multiline(chat_dir):
+    """Многострочные сообщения: строка-сообщение, за которой идут строки-продолжения.
+
+    Доставка/сводка берут только первую строку, поэтому продолжения теряются.
+    Возвращает [(файл, номер строки сообщения, число строк-продолжений, начало текста)].
+    """
+    out = []
+    for name in sorted(os.listdir(chat_dir)):
+        if not name.endswith(".md"):
+            continue
+        path = os.path.join(chat_dir, name)
+        try:
+            lines = open(path, encoding="utf-8-sig").read().splitlines()
+        except OSError:
+            continue
+        i = 0
+        while i < len(lines):
+            s = lines[i].strip()
+            if not STRICT.match(s) and not TS_ANY.match(s):
+                i += 1
+                continue
+            start = i + 1
+            j = i + 1
+            cont = 0
+            while j < len(lines):
+                nxt = lines[j].strip()
+                if not nxt or nxt.startswith("- [") or nxt.startswith("#") or nxt.startswith("```"):
+                    j += 1
+                    if nxt.startswith("- [") or nxt.startswith("#"):
+                        break
+                    continue
+                cont += 1
+                j += 1
+            if cont:
+                out.append((name, start, cont, s[:60]))
+            i = j
+    return out
+
+
 def find_exact_dups(chat_dir):
     """Точные дубли строк в одном outbox: mesma текст, разные метки.
 
@@ -294,6 +333,8 @@ def main():
     parser.add_argument("--check", action="store_true", help="код 1 при находках (CI)")
     parser.add_argument("--strict-times", action="store_true",
                         help="метки в будущем и немонотонные — ошибка (по умолчанию предупреждение)")
+    parser.add_argument("--multiline", action="store_true",
+                        help="показать многострочные сообщения (продолжения теряются в сводке)")
     parser.add_argument("--dups", action="store_true",
                         help="показать точные дубли сообщений в одном outbox (код 1, если есть)")
     parser.add_argument("--next-stamp", action="store_true",
@@ -304,6 +345,14 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
+
+    if args.multiline:
+        chat_dir0, _, _cfg0 = load_config(args.config)
+        rows = find_multiline(chat_dir0)
+        for name, line, cont, head in rows:
+            print("%s:%d — +%d строк продолжения: %s" % (name, line, cont, head))
+        print("многострочных сообщений: %d" % len(rows))
+        return 1 if rows else 0
 
     if args.dups:
         chat_dir0, _, _cfg0 = load_config(args.config)
