@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 
 API = "https://api.github.com"
 CONFIG = "loop.config.json"
+TASK_ID = re.compile(r"^(?:[A-Z]{2,3})-\d{2,4}\.md$")
 DEFAULT_JOBS = ["test", "front-e2e"]
 SPARK = "▁▂▃▄▅▆▇█"
 
@@ -173,6 +174,62 @@ def _repo_from_git(root):
 
 
 
+def metric_chat_skew(root):
+    """Метки чата вне шкалы (только «новая шкала» — что после строки-маркера).
+
+    Источник — chat_lint --report: строка «метки времени: впереди шкалы N ... порядок нарушен M».
+    Возвращает (skew, order) или (None, None), если линтер ничего не сказал.
+    """
+    rc, out = run(root, ["tools/chat_lint.py", "--config", CONFIG, "--report"])
+    m = re.search(r"впереди шкалы (\d+).*?порядок нарушен (\d+)", out or "")
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    if "метки времени" not in (out or ""):
+        return 0, 0
+    return None, None
+
+
+REVIEW_BY_FOLDER = {
+    "arch": "ar",
+    "devops": "do",
+    "back-end": "tl",
+    "front-end": "tl",
+    "tester": "tl",
+}
+
+
+def metric_review_domain(root, cfg):
+    """Доля задач на проверке/in-work, где `Проверяет:` совпадает с доменом папки.
+
+    Правило §2.1: ревьюер определяется папкой задачи; саморевью (автор = ревьюер)
+    уходит координатору. Возвращает (ok, total, bad_ids).
+    """
+    backlog = cfg.get("backlog") or "5-backlog"
+    ok = 0
+    total = 0
+    bad = []
+    for folder, expected in REVIEW_BY_FOLDER.items():
+        base = os.path.join(root, backlog, folder)
+        if not os.path.isdir(base):
+            continue
+        for fn in sorted(os.listdir(base)):
+            if not fn.endswith(".md") or not TASK_ID.match(fn):
+                continue
+            path = os.path.join(base, fn)
+            with open(path, encoding="utf-8-sig") as f:
+                text = f.read()
+            m = re.search(r"Проверяет:\*\*\s*(@?\w+)", text)
+            if not m:
+                continue
+            total += 1
+            got = m.group(1).lower().lstrip("@")
+            if got == expected:
+                ok += 1
+            else:
+                bad.append("%s:%s" % (fn[:-3], got))
+    return ok, total, bad
+
+
 def metric_inbox(root):
     rc, out = run(root, ["tools/chat_inbox.py"])
     m = re.search(r"(\d+)", out or "")
@@ -261,6 +318,8 @@ def main():
     gates_ok, gates_total, gates_bad = metric_gates(root)
     p95 = metric_ci(root, cfg, jobs, enabled=not args.no_ci)
     inbox = metric_inbox(root)
+    skew, order = metric_chat_skew(root)
+    rev_ok, rev_total, rev_bad = metric_review_domain(root, cfg)
     drift, drift_total = metric_drift(root, cfg)
 
     now = datetime.now(timezone.utc)
@@ -273,6 +332,10 @@ def main():
         "gates_total": gates_total,
         "ci_p95": p95,
         "inbox": inbox,
+        "chat_skew": skew,
+        "chat_order": order,
+        "review_ok": rev_ok,
+        "review_total": rev_total,
         "drift": drift,
         "drift_total": drift_total,
     }
@@ -307,6 +370,12 @@ def main():
             "n/a" if p95 is None else "%d с" % p95, "🟢" if (p95 is None or p95 < 300) else "🔴"),
         "| Вопросы в чате без ответа | %s | 0 | %s |" % (
             inbox, "🟢" if not inbox else "🟡"),
+        "| Метки чата вне шкалы / порядок | %s | 0 / 0 | %s |" % (
+            "n/a" if skew is None else "%s / %s" % (skew, order),
+            "🟢" if not (skew or order) else "🟡"),
+        "| Ревью по домену (§2.1) | %s | 100%% | %s |" % (
+            "n/a" if not rev_total else "%d/%d" % (rev_ok, rev_total),
+            "🟢" if not rev_bad else "🟡"),
         "| Копии инструментов разошлись | %s | 0 | %s |" % (
             "n/a" if drift is None else "%d/%d" % (drift, drift_total),
             "n/a" if drift is None else ("🟢" if drift == 0 else "🟡")),

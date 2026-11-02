@@ -211,6 +211,8 @@ python tools/sync_tools.py --pull --from ../LoopMaker   # пересинхрон
 | Гигиена гейтов: `stats --check`, `chat_lint --check`, `check_workflow_paths` | те же скрипты | 3/3 |
 | CI: худший p95 по тяжёлым джобам | GitHub API (считает сам `health.py`) | < 300 с |
 | Вопросы в чате без ответа | `tools/chat_inbox.py` | 0 |
+| Метки чата вне шкалы / порядок | 	ools/chat_lint.py --report (только «новая шкала») | 0 / 0 |
+| Ревью по домену (§2.1) | health.py: Проверяет: против папки задачи | 100% |
 | Копии инструментов разошлись с LoopMaker (если репозиторий рядом) | сравнение `tools/*.py` | 0 |
 
 ```bash
