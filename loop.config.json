@@ -172,6 +172,8 @@
     "shift_hours": 0,
     "tolerance_min": 120,
     "_comment": "метка в чате = часы машины. Сдвиг нужен только если проект живёт в другой TZ; сейчас 0 (решение 07.11: чат читают люди, метка должна совпадать с их часами)",
-    "tz_offset_hours": 3
+    "tz_offset_hours": 3,
+    "canon_since": "2026-11-07 08:26",
+    "_comment_canon_since": "С этой метки действует канон «одна строка = одно сообщение»; служит baseline для chat_lint --multiline --since config."
   }
 }

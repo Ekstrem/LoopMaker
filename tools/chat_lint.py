@@ -367,7 +367,16 @@ def main():
 
     if args.multiline:
         chat_dir0, _, _cfg0 = load_config(args.config)
-        rows = find_multiline(chat_dir0, since=args.since)
+        since = args.since
+        # `--since config` берёт дату включения канона из loop.config.json:
+        # дата не хардкодится в yaml и правится в одном месте.
+        if since == "config":
+            chat_cfg = _cfg0.get("chat_time") or {}
+            since = chat_cfg.get("canon_since")
+            if not since:
+                print("chat_lint: в loop.config.json нет chat.canon_since — работаю без baseline")
+                since = None
+        rows = find_multiline(chat_dir0, since=since)
         for name, line, cont, head in rows:
             print("%s:%d — +%d строк продолжения: %s" % (name, line, cont, head))
         per = {}
