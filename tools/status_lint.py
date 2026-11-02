@@ -95,6 +95,37 @@ def field_value(text, name):
     return ""
 
 
+AUTHOR_BY_FOLDER = {
+    "arch": "ar",
+    "devops": "do",
+    "back-end": "be",
+    "front-end": "fe",
+    "tester": "te",
+}
+
+
+def self_review(rel, text):
+    """§2.1 п.6: запрещено саморевью — `Проверяет:` не может быть ролью автора.
+
+    Автор определяется папкой задачи (в своей папке пишет только её владелец).
+    Возвращает (автор, ревьюер) при нарушении, иначе None.
+    """
+    parts = rel.split("/")
+    folder = parts[1] if len(parts) > 1 else ""
+    author = AUTHOR_BY_FOLDER.get(folder)
+    if not author:
+        return None
+    value = field_value(text, "Проверяет").strip().lower()
+    got = ""
+    for token in value.replace(",", " ").split():
+        if token.startswith("@"):
+            got = token.lstrip("@")
+            break
+    if got and got == author:
+        return (author, got)
+    return None
+
+
 def task_files(root, cfg):
     backlog = cfg.get("backlog") or "5-backlog"
     folders = [f.get("folder") for f in (cfg.get("task_folders") or []) if f.get("folder")]
@@ -155,6 +186,12 @@ def main():
                 level = "error" if ("%s:%s" % (value, field)) in ERROR_FIELDS else "warn"
                 problems.append({"file": rel, "status": value, "level": level,
                                  "problem": "нет/пусто поле «%s»" % field})
+        bad = self_review(rel, text)
+        if bad:
+            author, got = bad
+            problems.append({"file": rel, "status": value, "level": "warn",
+                             "problem": "саморевью: автор @%s и `Проверяет: @%s` (§2.1 п.6)"
+                                        % (author.upper(), got.upper())})
 
     errors = [p for p in problems if p["level"] == "error"]
     warns = [p for p in problems if p["level"] == "warn"]

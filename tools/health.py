@@ -189,26 +189,25 @@ def metric_chat_skew(root):
     return None, None
 
 
-REVIEW_BY_FOLDER = {
+AUTHOR_BY_FOLDER = {
     "arch": "ar",
     "devops": "do",
-    "back-end": "tl",
-    "front-end": "tl",
-    "tester": "tl",
+    "back-end": "be",
+    "front-end": "fe",
+    "tester": "te",
 }
 
 
 def metric_review_domain(root, cfg):
-    """Доля задач на проверке/in-work, где `Проверяет:` совпадает с доменом папки.
+    """Сколько задач имеют ревьюера, отличного от автора (§2.1 п.6: саморевью запрещено).
 
-    Правило §2.1: ревьюер определяется папкой задачи; саморевью (автор = ревьюер)
-    уходит координатору. Возвращает (ok, total, bad_ids).
+    Автор определяется папкой задачи. Возвращает (ok, total, bad_ids).
     """
     backlog = cfg.get("backlog") or "5-backlog"
     ok = 0
     total = 0
     bad = []
-    for folder, expected in REVIEW_BY_FOLDER.items():
+    for folder, author in AUTHOR_BY_FOLDER.items():
         base = os.path.join(root, backlog, folder)
         if not os.path.isdir(base):
             continue
@@ -223,7 +222,7 @@ def metric_review_domain(root, cfg):
                 continue
             total += 1
             got = m.group(1).lower().lstrip("@")
-            if got == expected:
+            if got != author:
                 ok += 1
             else:
                 bad.append("%s:%s" % (fn[:-3], got))
@@ -373,7 +372,7 @@ def main():
         "| Метки чата вне шкалы / порядок | %s | 0 / 0 | %s |" % (
             "n/a" if skew is None else "%s / %s" % (skew, order),
             "🟢" if not (skew or order) else "🟡"),
-        "| Ревью по домену (§2.1) | %s | 100%% | %s |" % (
+        "| Ревью не автором (§2.1 п.6) | %s | 100%% | %s |" % (
             "n/a" if not rev_total else "%d/%d" % (rev_ok, rev_total),
             "🟢" if not rev_bad else "🟡"),
         "| Копии инструментов разошлись | %s | 0 | %s |" % (
