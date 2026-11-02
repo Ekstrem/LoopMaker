@@ -333,6 +333,8 @@ def main():
     parser.add_argument("--check", action="store_true", help="код 1 при находках (CI)")
     parser.add_argument("--strict-times", action="store_true",
                         help="метки в будущем и немонотонные — ошибка (по умолчанию предупреждение)")
+    parser.add_argument("--strict", action="store_true",
+                        help="считать находки ошибкой (для --multiline)")
     parser.add_argument("--multiline", action="store_true",
                         help="показать многострочные сообщения (продолжения теряются в сводке)")
     parser.add_argument("--dups", action="store_true",
@@ -351,8 +353,14 @@ def main():
         rows = find_multiline(chat_dir0)
         for name, line, cont, head in rows:
             print("%s:%d — +%d строк продолжения: %s" % (name, line, cont, head))
-        print("многострочных сообщений: %d" % len(rows))
-        return 1 if rows else 0
+        per = {}
+        for name, _line, cont, _head in rows:
+            per[name] = per.get(name, 0) + 1
+        print("многострочных сообщений: %d (%s)" % (
+            len(rows), ", ".join("%s: %d" % kv for kv in sorted(per.items())) or "нет"))
+        # Историю не переписываем (D-07), поэтому по умолчанию это отчёт, а не ошибка:
+        # код 1 только со --strict — иначе гейт был бы вечно красным из-за старых сообщений.
+        return 1 if (rows and args.strict) else 0
 
     if args.dups:
         chat_dir0, _, _cfg0 = load_config(args.config)
