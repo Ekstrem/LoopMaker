@@ -226,7 +226,9 @@ def main():
     if args.next_stamp:
         chat_dir0, _, cfg0 = load_config(args.config)
         shift0 = int((cfg0.get("chat_time") or {}).get("shift_hours", 0))
-        print((datetime.datetime.now() + datetime.timedelta(hours=shift0))
+        tz0 = int((cfg0.get("chat_time") or {}).get("tz_offset_hours", 3))
+        # метка = сейчас в TZ проекта + сдвиг шкалы (по умолчанию 0)
+        print((datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) + datetime.timedelta(hours=tz0 + shift0))
               .strftime("%Y-%m-%d %H:%M"))
         return 0
 
@@ -247,8 +249,11 @@ def main():
 
     shift = int((cfg.get("chat_time") or {}).get("shift_hours", 0))
     tolerance = int((cfg.get("chat_time") or {}).get("tolerance_min", 120))
-    future, order = scan_times(chat_dir, set(titles.keys()), datetime.datetime.now(),
-                               tolerance, shift)
+    tz_offset = int((cfg.get("chat_time") or {}).get("tz_offset_hours", 3))
+    # Метки в чате — в TZ проекта (MSK). Раннер GitHub живёт в UTC, поэтому «сейчас»
+    # считаем как UTC + смещение проекта, иначе --strict-times краснеет на ровных метках.
+    now_project = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) + datetime.timedelta(hours=tz_offset + shift))
+    future, order = scan_times(chat_dir, set(titles.keys()), now_project, tolerance, shift)
 
     if args.report or args.check:
         print("нераспознанных строк: %d (новых: %d)" % (len(problems), len(fresh)))
