@@ -41,7 +41,9 @@ PLACEHOLDER_HINTS = (
 )
 SKIP_VALUE_PREFIXES = ("$", "os.", "process.env", "env.", "config.", "getenv", "{", "(")
 SKIP_VALUES = {"", "null", "none", "true", "false", '""', "''", "string", "password",
-               "token", "secret", "write", "read", "admin", "bearer"}
+               "token", "secret", "write", "read", "admin", "bearer",
+               # имена типов в документации: {token: bool, tokenLen: number} — не секреты
+               "bool", "boolean", "int", "integer", "number", "object", "undefined"}
 # YAML-права вроде `id-token: write` — не секрет, хотя в имени есть «token».
 SKIP_KEY_SUFFIXES = ("-token", "_token")
 
