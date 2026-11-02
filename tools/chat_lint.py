@@ -267,8 +267,10 @@ def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0, use
         if use_clock:
             reference = now + datetime.timedelta(hours=shift_hours)
         else:
-            others = [v for k, v in global_max.items() if k != name]
-            reference = max(others) if others else now
+            # Опора — максимум по всему чату (все файлы, обе шкалы) и по часам:
+            # иначе роль, пишущая в новой шкале, «впереди» на дни.
+            _all = chat_max_stamp(chat_dir)
+            reference = max([now] + list(global_max.values()) + ([_all] if _all else []))
         if ts > reference + datetime.timedelta(minutes=tolerance_min):
             lag = ts - reference
             future.append((name, raw, int(lag.total_seconds() // 3600)))
@@ -351,8 +353,9 @@ def main():
     # раннера. Причина: раннер в UTC, чат в MSK(+3); любая местная метка выглядела
     # «будущим». Вне CI (машина в TZ проекта) остаётся сравнение с текущим временем —
     # там оно осмысленно и ловит метку, уехавшую вперёд по ошибке.
+    # Шкала чата — канон и локально, и в CI: сравниваем с максимумом по чату и по часам.
     future, order = scan_times(chat_dir, set(titles.keys()), now_project, tolerance, shift,
-                               use_clock=not CI)
+                               use_clock=False)
 
     if args.report or args.check:
         print("нераспознанных строк: %d (новых: %d)" % (len(problems), len(fresh)))
@@ -370,7 +373,7 @@ def main():
             print("метки времени: впереди шкалы %d (сдвиг %d ч, допуск %d мин), порядок нарушен %d"
               % (len(future), shift, tolerance, len(order)))
             for name, raw, days in future[:5]:
-                print("  %s: %s — на %d дн. впереди часов машины" % (name, raw, days))
+                print("  %s: %s — на %d ч впереди шкалы" % (name, raw, days))
             for name, raw, prev in order[:5]:
                 print("  %s: %s после %s — порядок нарушен" % (name, raw, prev))
         bad = problems or ((future or order) and args.strict_times)
