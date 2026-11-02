@@ -133,8 +133,17 @@ def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0):
         if role not in known_roles:
             continue
         prev = None
+        # Проверяем только «новую шкалу»: всё, что до строки-маркера — исторический
+        # легаси (метки писались «по памяти» и уехали вперёд). Нет маркера — проверяем всё.
+        new_scale = False
         with open(os.path.join(chat_dir, name), encoding="utf-8-sig") as handle:
             for line in handle:
+                if "метка = часы машины" in line:
+                    new_scale = True
+                    prev = None
+                    continue
+                if not new_scale:
+                    continue
                 m = TS_CANON.match(line.strip())
                 if not m:
                     continue
