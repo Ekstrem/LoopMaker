@@ -338,6 +338,19 @@ def metric_wip_share(root):
     return round(100.0 * wip / len(lines)), len(lines)
 
 
+def metric_chat_format(root):
+    """Доля сообщений, написанных не каноном (ct: без скобок, `->`, без `@`).
+
+    Доставку это не ломает (парсер толерантен), но ломает чужие регексы и глаза
+    людей. Источник — строка отчёта `chat_lint --report`.
+    """
+    rc, out = run(root, ["tools/chat_lint.py", "--config", CONFIG, "--report"])
+    m = re.search(r"формат: (\d+) из (\d+)", out or "")
+    if not m:
+        return 0, 0
+    return int(m.group(1)), int(m.group(2))
+
+
 def metric_inbox(root):
     rc, out = run(root, ["tools/chat_inbox.py"])
     m = re.search(r"(\d+)", out or "")
@@ -432,6 +445,7 @@ def main():
     cycle_med, cycle_n, cycle_missing = metric_cycle(root, cfg)
     lm_med, lm_n = metric_lm_sla(root, cfg)
     wip_share, wip_n = metric_wip_share(root)
+    fmt_tol, fmt_total = metric_chat_format(root)
 
     now = datetime.now(timezone.utc)
     row = {
@@ -453,6 +467,8 @@ def main():
         "lm_sla_min": None if lm_med is None else round(lm_med),
         "lm_sla_n": lm_n,
         "wip_share": wip_share,
+        "chat_format_tolerant": fmt_tol,
+        "chat_format_total": fmt_total,
         "drift_total": drift_total,
     }
 
@@ -499,6 +515,9 @@ def main():
         "| Ответ @LM, медиана (мин) | %s | < 30 | %s |" % (
             "n/a" if lm_med is None else "%.0f (n=%d)" % (lm_med, lm_n),
             "🟢" if (lm_med is not None and lm_med < 30) else "🟡"),
+        "| Формат чата не каноном | %s | < 10%% | %s |" % (
+            "n/a" if not fmt_total else "%d из %d" % (fmt_tol, fmt_total),
+            "🟢" if (not fmt_total or 100.0 * fmt_tol / fmt_total < 10) else "🟡"),
         "| Доля wip-коммитов | %s | < 20%% | %s |" % (
             "n/a" if wip_share is None else "%d%% из %d" % (wip_share, wip_n),
             "🟢" if (wip_share is None or wip_share < 20) else "🟡"),
