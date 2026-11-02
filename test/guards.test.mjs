@@ -330,3 +330,25 @@ test('служебный _lint.md доставляет замечание авт
   assert.equal(stage.sent[0].sessionId, 'sess-be');
   assert.match(stage.sent[0].text, /строка не распознана/);
 });
+test('адресат-человек: сообщение уходит в личный топик, а не в сессию', async (t) => {
+  const stage = await makeStage({
+    config: { roles: { be: 'BackEnd', ex: 'Ekstrem' }, userTag: 'EX' },
+    sessions: { be: 'sess-be' },
+    bridgeOptions: {
+      userRole: 'ex',
+      onUserMessage: async (text) => {
+        delivered.push(text);
+      },
+    },
+  });
+  t.after(stage.cleanup);
+  const delivered = [];
+
+  await stage.bridge.start();
+  await stage.appendChat('be.md', '- [2026-11-01 10:00] → @EX: нужен твой ответ\n');
+  await stage.bridge.poll();
+
+  assert.equal(stage.sent.length, 0, 'в сессии ничего не ушло');
+  assert.equal(delivered.length, 1, 'ушло в личный топик');
+  assert.match(delivered[0], /нужен твой ответ/);
+});

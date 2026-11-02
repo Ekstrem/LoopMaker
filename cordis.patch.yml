@@ -50,6 +50,7 @@
           tl: TechLead
           po: PO
           lm: LoopMaster
+          ex: Ekstrem
         # Явные переопределения, если заголовок сессии не собирается шаблоном.
         sessions: {}
         # Текст, который получает адресат. {from} {to} {text} {ts} {file}.
@@ -78,6 +79,12 @@
         maxPerHour: 60
         # После порога переписка уходит координатору, а пара замораживается:
         # он решает — техническое, бизнесовое (PO) или архитектурное (AR).
+        # Адресат-человек: `→ @EX` уходит в его Telegram-топик, а не в сессию.
+        userTag: EX
+        userTopicChatId: '-1004331789363'
+        userTopicThreadId: auto
+        userTopicTokenEnv: TELEGRAM_BOT_TOKEN
+        userTopicBindingsFile: 'C:\Users\About\.dsh\dsh-telegram\bindings.json'
         escalateTo: tl
         freezeMs: 600000
         # TTL очереди должен быть больше freezeMs, иначе накопленное за разбор истечёт.

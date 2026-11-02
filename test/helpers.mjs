@@ -12,7 +12,7 @@ import { ChatBridge } from '../lib/bridge.js';
 
 export const silent = { debug() {}, info() {}, warn() {}, error() {} };
 
-export async function makeStage({ config = {}, sessions = {}, send, now } = {}) {
+export async function makeStage({ config = {}, sessions = {}, send, now, bridgeOptions = {} } = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'loopmaker-test-'));
   const chatDir = path.join(dir, 'chat');
   await mkdir(chatDir, { recursive: true });
@@ -38,6 +38,7 @@ export async function makeStage({ config = {}, sessions = {}, send, now } = {}) 
     resolveSession: async (role) => sessionMap[role],
     send: send ?? (async (sessionId, text) => { sent.push({ sessionId, text }); }),
     now,
+    ...bridgeOptions,
   });
 
   return {
