@@ -79,10 +79,18 @@
    `<backlog>/chat/**`, со своим `concurrency`; в шапке — парная настройка тяжёлого
    workflow (`paths-ignore`, без отмены).
 4. **`templates/AGENTS.project.md` §6–§7** — короткие версии обоих правил для нового проекта.
+5. **`tools/check_workflow_paths.py`** — механическая проверка правила 5: у тяжёлых
+   workflow обязателен `paths`/`paths-ignore`; лёгкие перечисляются в
+   `loop.config.json` → `ci.light_workflows`. В XDiary живёт шагом внутри `guard-paths.yml`.
+6. **`tools/ci_metrics.py`** — p50/p95 джобов по успешным прогонам (правило 8: «цифра
+   вместо ощущения»). Замер на XDiary: `test` 62/71 с, `front-e2e` 129/157 с — оба
+   далеко внутри пятиминутного окна.
 
 ### Открыто
 - [ ] Шаблон `sync-board.yml` (пока только строка в §7): задачи `.md` → Issues + Projects
       с `paths: <backlog>/**` и исключением `chat/**`.
 - [ ] Шаблон тяжёлого `ci.yml`: пример `concurrency`-групп без `cancel-in-progress`
       и с `paths-ignore` для переписки.
+- [ ] `check_workflow_paths.py` — включить в шаблон `guard-paths.yml` (сейчас шага нет
+      в шаблоне, только в XDiary).
 

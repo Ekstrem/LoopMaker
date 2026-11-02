@@ -16,6 +16,11 @@
   один открытый issue-сигнал, сам закрывается, когда чисто. Проверено в XDiary.
 - Guard секретов и линтер чата: `tools/check_secrets.py`, `tools/chat_lint.py`,
   `tools/keycmp.py` + `templates/guard-secrets.yml` и `templates/chat-guards.yml`.
+- Guard триггеров CI: `tools/check_workflow_paths.py` — падает на workflow с `on.push`
+  без `paths`/`paths-ignore` (чтобы коммит в чат не гонял деплой/тесты). Происхождение:
+  инцидент XDiary 06.11.
+- Метрика CI-бюджета: `tools/ci_metrics.py` — p50/p95 успешных прогонов по джобам
+  (в XDiary: `test` ≈ 62/71 с, `front-e2e` ≈ 129/157 с) — чтобы «долго» заменить цифрой.
 - Дисциплина CI (AGENTS §14): окно 5 минут на отмену прогона, тяжёлые джобы в очередь
   (без `cancel-in-progress`), `paths-ignore` для переписки, «отменённый прогон — не
   доказательство». Перенесено из XDiary (DO-023, 05.11).
