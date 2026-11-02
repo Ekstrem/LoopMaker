@@ -22,9 +22,11 @@
 Код возврата: 0 всегда (дашборд не гейт), кроме ошибки конфига.
 """
 import argparse
+import glob
 import json
 import os
 import re
+import statistics
 import subprocess
 import sys
 import time
@@ -56,6 +58,16 @@ def run(root, args):
     cmd = [sys.executable] + args
     try:
         p = subprocess.run(cmd, cwd=root, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", check=False)
+        return p.returncode, p.stdout
+    except OSError as e:
+        return 1, str(e)
+
+
+def sh(root, args):
+    """Внешняя команда (git) в корне проекта: (rc, stdout)."""
+    try:
+        p = subprocess.run(args, cwd=root, capture_output=True, text=True,
                            encoding="utf-8", errors="replace", check=False)
         return p.returncode, p.stdout
     except OSError as e:
@@ -229,6 +241,103 @@ def metric_review_domain(root, cfg):
     return ok, total, bad
 
 
+def metric_cycle(root, cfg):
+    """Lead time закрытых задач: медиана дней от первой версии файла до закрытия.
+
+    Источник — git, а не поля задач: поле `В работе с` заполнено лишь у 3 из 115
+    закрытых задач (и часто содержит дату из будущего), поэтому метрика на нём
+    давала n/a. Первый коммит файла ≈ момент, когда задача появилась; последний —
+    когда её закрыли.
+    """
+    backlog = cfg.get("backlog") or "5-backlog"
+    days = []
+    skipped = 0
+    for path in sorted(glob.glob(os.path.join(root, backlog, "*", "*.md"))):
+        rel = os.path.relpath(path, root).replace("\\", "/")
+        if "/chat/" in rel:
+            continue
+        with open(path, encoding="utf-8-sig") as f:
+            head = f.read(2000)
+        if "Закрыта" not in head:
+            continue
+        rc1, first = sh(root, ["git", "log", "--diff-filter=A", "--format=%at", "--", rel])
+        rc2, last = sh(root, ["git", "log", "-1", "--format=%at", "--", rel])
+        if rc1 != 0 or rc2 != 0 or not first.strip() or not last.strip():
+            skipped += 1
+            continue
+        try:
+            created = datetime.fromtimestamp(int(first.splitlines()[-1].strip()))
+            closed = datetime.fromtimestamp(int(last.strip().splitlines()[0]))
+        except ValueError:
+            skipped += 1
+            continue
+        delta = (closed - created).total_seconds() / 86400.0
+        if 0 <= delta < 400:
+            days.append(delta)
+        else:
+            skipped += 1
+    if not days:
+        return None, 0, skipped
+    return statistics.median(days), len(days), skipped
+
+
+def metric_lm_sla(root, cfg):
+    """SLA процессной роли: медиана минут от вопроса `→ @LM` до ответа в lm.md.
+
+    Вопрос ищется в любом outbox'е, ответ — строка в lm.md, адресованная автору
+    вопроса, позже вопроса по времени. Медиана по парам; нет пар — n/a.
+    """
+    backlog = cfg.get("backlog") or "5-backlog"
+    chat = os.path.join(root, backlog, "chat")
+    if not os.path.isdir(chat):
+        return None, 0
+    import statistics
+
+    def parse(name):
+        out = []
+        path = os.path.join(chat, name)
+        if not os.path.exists(path):
+            return out
+        with open(path, encoding="utf-8-sig") as f:
+            for line in f:
+                m = re.match(r"-\s*\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]\s*→\s*@(\w+)", line)
+                if m:
+                    try:
+                        ts = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M")
+                    except ValueError:
+                        continue
+                    out.append((ts, m.group(2).lower(), line.strip()))
+        return out
+
+    answers = parse("lm.md")
+    pairs = []
+    for name in sorted(os.listdir(chat)):
+        if not name.endswith(".md") or name in ("README.md", "_dialogue.md", "lm.md", "_lint.md"):
+            continue
+        author = name[:-3].lower()
+        for ts, target, text in parse(name):
+            if target != "lm":
+                continue
+            reply = next((a for a in answers if a[0] >= ts and a[1] == author), None)
+            if reply:
+                pairs.append((reply[0] - ts).total_seconds() / 60.0)
+    if not pairs:
+        return None, 0
+    return statistics.median(pairs), len(pairs)
+
+
+def metric_wip_share(root):
+    """Доля wip-коммитов в последних 200: показывает трение в общем дереве."""
+    _rc, out = sh(root, ["git", "log", "-200", "--pretty=%s"])
+    if not out:
+        return None, 0
+    lines = [l for l in out.splitlines() if l.strip()]
+    if not lines:
+        return None, 0
+    wip = sum(1 for l in lines if l.strip().lower().startswith("wip("))
+    return round(100.0 * wip / len(lines)), len(lines)
+
+
 def metric_inbox(root):
     rc, out = run(root, ["tools/chat_inbox.py"])
     m = re.search(r"(\d+)", out or "")
@@ -320,6 +429,9 @@ def main():
     skew, order = metric_chat_skew(root)
     rev_ok, rev_total, rev_bad = metric_review_domain(root, cfg)
     drift, drift_total = metric_drift(root, cfg)
+    cycle_med, cycle_n, cycle_missing = metric_cycle(root, cfg)
+    lm_med, lm_n = metric_lm_sla(root, cfg)
+    wip_share, wip_n = metric_wip_share(root)
 
     now = datetime.now(timezone.utc)
     row = {
@@ -336,6 +448,11 @@ def main():
         "review_ok": rev_ok,
         "review_total": rev_total,
         "drift": drift,
+        "cycle_days": None if cycle_med is None else round(cycle_med, 1),
+        "cycle_n": cycle_n,
+        "lm_sla_min": None if lm_med is None else round(lm_med),
+        "lm_sla_n": lm_n,
+        "wip_share": wip_share,
         "drift_total": drift_total,
     }
 
@@ -375,6 +492,16 @@ def main():
         "| Ревью не автором (§2.1 п.6) | %s | 100%% | %s |" % (
             "n/a" if not rev_total else "%d/%d" % (rev_ok, rev_total),
             "🟢" if not rev_bad else "🟡"),
+        "| Цикл задачи, медиана (дней) | %s | < 7 | %s |" % (
+            "n/a" if cycle_med is None else "%.1f (n=%d%s)" % (
+                cycle_med, cycle_n, "" if not cycle_missing else ", без дат %d" % cycle_missing),
+            "🟢" if (cycle_med is not None and cycle_med < 7) else "🟡"),
+        "| Ответ @LM, медиана (мин) | %s | < 30 | %s |" % (
+            "n/a" if lm_med is None else "%.0f (n=%d)" % (lm_med, lm_n),
+            "🟢" if (lm_med is not None and lm_med < 30) else "🟡"),
+        "| Доля wip-коммитов | %s | < 20%% | %s |" % (
+            "n/a" if wip_share is None else "%d%% из %d" % (wip_share, wip_n),
+            "🟢" if (wip_share is None or wip_share < 20) else "🟡"),
         "| Копии инструментов разошлись | %s | 0 | %s |" % (
             "n/a" if drift is None else "%d/%d" % (drift, drift_total),
             "n/a" if drift is None else ("🟢" if drift == 0 else "🟡")),
