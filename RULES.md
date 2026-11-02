@@ -290,3 +290,8 @@ python tools/health.py --no-ci         # без сети (быстро, лока
   проверка: `tools/check_rule_docs.py`.
 - «Дошло» проверяется только после `fetch`: `git rev-list --count origin/main..HEAD` = 0;
   SHA упоминаем после `git merge-base --is-ancestor`.
+
+**Повреждённые метаданные git** (`.git/rebase-merge` без `head-name`, «could not read
+head-name», `rebase --abort` не работает) — отдельный случай: сначала объявление в чат,
+затем **один** восстановитель; автостэш восстанавливается (`git stash apply <sha>`),
+а не удаляется; SHA удаляемого фиксируется в чате.
