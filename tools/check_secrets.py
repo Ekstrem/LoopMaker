@@ -43,9 +43,36 @@ SKIP_VALUE_PREFIXES = ("$", "os.", "process.env", "env.", "config.", "getenv", "
 SKIP_VALUES = {"", "null", "none", "true", "false", '""', "''", "string", "password",
                "token", "secret", "write", "read", "admin", "bearer",
                # имена типов в документации: {token: bool, tokenLen: number} — не секреты
-               "bool", "boolean", "int", "integer", "number", "object", "undefined"}
+               # (список согласован с @TL 20:35: bool, boolean, number, string, int, length, masked)
+               "bool", "boolean", "int", "integer", "number", "object", "undefined",
+               "length", "masked", "boolean"}
 # YAML-права вроде `id-token: write` — не секрет, хотя в имени есть «token».
 SKIP_KEY_SUFFIXES = ("-token", "_token")
+
+# PDR-20: порог значащих символов поднят 4 -> 8. Значение из 4 символов — это
+# `bool`, `true`, `null`, имя типа или флаг, а не секрет. Реальные ключи/токены
+# короче 8 значащих символов не встречаются.
+MIN_SECRET_LEN = 8
+# PDR-20: если строка сама говорит, что значение маскировано — это документация,
+# а не утечка. Список узкий и относится к нашей же терминологии снапшотов.
+# PDR-20: подсказки СТРОКИ. Если строка сама говорит, что это документация,
+# описание сигнатуры или тестовые данные, `assign:`-совпадения на ней не считаются
+# утечкой. Это компромисс: строка с «пример»/«фейковый» не сканируется на assign
+# вовсе — принято осознанно, чтобы гейт не блокировал описание тестов.
+# Важно: `bool` здесь НЕ нужен — если `bool` является ЗНАЧЕНИЕМ, его отсекает
+# SKIP_VALUES, а упоминание слова `bool` в строке не должно отключать проверку
+# (иначе одна строка про типы гасит находку настоящего ключа рядом).
+MASK_HINTS = (
+    # описание маскированного вывода
+    "маскирован", "masked", "значение скрыто", "скрыто намеренно",
+    "tokenlen", "clientidlen", "apibaselen",
+    # описание тестовых/примерных данных (PDR-20, вариант D — только эта часть).
+    # Стемы, а не слова: «негативн» ловит и «негативного теста».
+    # ВАЖНО: слово «пример» здесь НЕ используется — оно матчит «наприме́р» и
+    # отключило бы проверку почти на любой строке. Это была бы дыра, а не фикс.
+    "негативн", "фейков", "плейсхолдер", "placeholder",
+    "example", "dummy", "test data", "тестовые данные", "заглушк",
+)
 
 # Имена, рядом с которыми значение считается секретом.
 KEY_NAME = (
@@ -138,6 +165,16 @@ def _glob(pattern):
     return g.glob(pattern, recursive=False)
 
 
+def _entropy(s):
+    """Оценка Шеннона: низкая энтропия = слово, а не секрет (`aaaa`, `abababab`)."""
+    from collections import Counter
+    from math import log2
+    if not s:
+        return 0.0
+    n = len(s)
+    return -sum((c / n) * log2(c / n) for c in Counter(s).values())
+
+
 def looks_like_secret(value):
     if "`" in value:                      # `NAME=` внутри code-span — это имя, не значение
         return False
@@ -159,8 +196,14 @@ def looks_like_secret(value):
     # документация: «GCDC_...», «sk-...» — многоточие в конце = заглушка
     if core.endswith(("...", "…")):
         return False
-    # после отрезания многоточий должно остаться >= 4 значащих символов
-    return len(re.sub(r"[^A-Za-z0-9+/=_\-]", "", core)) >= 4
+    significant = re.sub(r"[^A-Za-z0-9+/=_\-]", "", core)
+    # PDR-20: порог 8 значащих символов + энтропия.
+    # 4 символа — это `bool`/`true`/флаг; `abababab` длинное, но энтропия 1.0.
+    if len(significant) < MIN_SECRET_LEN:
+        return False
+    if _entropy(significant.lower()) < 2.0:
+        return False
+    return True
 
 
 def scan_text(text, allow_shapes=True):
@@ -168,11 +211,12 @@ def scan_text(text, allow_shapes=True):
     for i, line in enumerate(text.splitlines(), 1):
         if len(line) > 4000:
             continue
+        mask_hint = any(h in line.lower() for h in MASK_HINTS)
         for m in ASSIGN.finditer(line):
             key = m.group(1).lower().replace(" ", "")
             if key.endswith(SKIP_KEY_SUFFIXES):
                 continue
-            if looks_like_secret(m.group(2)):
+            if looks_like_secret(m.group(2)) and not mask_hint:
                 findings.append(("assign:" + key, i, len(m.group(2))))
         if allow_shapes:
             for name, rx in SHAPES:
