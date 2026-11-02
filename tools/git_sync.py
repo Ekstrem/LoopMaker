@@ -14,6 +14,7 @@
     python tools/git_sync.py --role lm --paths 5-tech-backlog/chat/lm.md   # узкий wip
 """
 import argparse
+import time
 import os
 import subprocess
 import sys
@@ -40,6 +41,8 @@ def main():
     ap.add_argument("--all", action="store_true", help="wip всего дерева (исключение)")
     ap.add_argument("--message", default=None,
                     help="текст коммита (вместо wip-автосейва)")
+    ap.add_argument("--hold", action="store_true",
+                    help="не пушить main: собрать ветку hold/<role> для MR (окно тишины)")
     ap.add_argument("-u", "--include-untracked", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--remote", default="origin")
@@ -90,6 +93,22 @@ def main():
         say("dry-run: дальше не иду")
         return 0
 
+    # Предохранитель (по инциденту 02.11): рапорт «запушено (1 коммит)» при непопавших
+    # файлах опаснее ошибки. Если в зоне роли есть untracked, а `-u` не передан — не идём.
+    NOISE = (".obsidian/", "log", "rep", "msg", ".tmp-", "node_modules/")
+    untracked = git("ls-files", "--others", "--exclude-standard").stdout.splitlines()
+    untracked = [u for u in untracked if u.strip() and not any(n in u for n in NOISE)]
+    if untracked and not args.include_untracked and not args.all:
+        say("")
+        say("git_sync: ВНИМАНИЕ — %d untracked-файлов вне коммита:" % len(untracked))
+        for name in untracked[:10]:
+            say("   ?", name)
+        if len(untracked) > 10:
+            say("   … ещё %d" % (len(untracked) - 10))
+        say("   они не попадут в пуш. Добавь `-u` (все) или `--paths` (выборочно),")
+        say("   либо удали/заигнорь их — иначе получишь рапорт «запушено» без содержимого.")
+        return 1
+
     if dirty:
         cmd = [sys.executable, "tools/wip.py", "--role", args.role]
         if args.all:
@@ -119,6 +138,19 @@ def main():
     ahead = git("rev-list", "--count", "%s/%s..HEAD" % (args.remote, args.branch)).stdout.strip()
     if ahead == "0":
         say("git_sync: нечего пушить")
+        return 0
+
+    if args.hold:
+        # Окно тишины: main не трогаем, собираем ветку и просим координатора смержить MR.
+        name = "hold/%s-%s" % (args.role, time.strftime("%Y%m%d-%H%M"))
+        git("branch", "-f", name, "HEAD")
+        out = git("push", "-u", args.remote, name, check=False)
+        say("")
+        say("git_sync --hold: main не тронут, ветка %s отправлена" % name)
+        say((out.stderr or out.stdout).strip()[-240:])
+        say("")
+        say("Дальше: строка → @TL в свой outbox «мерж %s после окна» " % name)
+        say("и задача в его папке. Ветка не запускает тяжёлые workflow (они на main).")
         return 0
 
     push = git("push", args.remote, args.branch, check=False)
