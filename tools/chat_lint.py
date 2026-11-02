@@ -203,7 +203,7 @@ def find_exact_dups(chat_dir):
         with open(path, encoding="utf-8-sig") as f:
             for no, line in enumerate(f, 1):
                 s = line.strip()
-                m = STRICT.match(s) or TOLERANT_ANY.match(s)
+                m = STRICT.match(s)
                 if not m:
                     continue
                 body = s.split(":", 1)[-1].strip()
@@ -292,14 +292,24 @@ def main():
     parser.add_argument("--check", action="store_true", help="код 1 при находках (CI)")
     parser.add_argument("--strict-times", action="store_true",
                         help="метки в будущем и немонотонные — ошибка (по умолчанию предупреждение)")
+    parser.add_argument("--dups", action="store_true",
+                        help="показать точные дубли сообщений в одном outbox (код 1, если есть)")
     parser.add_argument("--next-stamp", action="store_true",
-                        help="напечатать метку для новой строки (часы машины + сдвиг проекта)")
+                        help="напечатать метку для новой строки (максимум по чату + 1 минута)")
     args = parser.parse_args()
 
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
+
+    if args.dups:
+        chat_dir0, _, _cfg0 = load_config(args.config)
+        dups = find_exact_dups(chat_dir0)
+        for name, first, second, body in dups:
+            print("%s: строки %d и %d — одинаковый текст: %s" % (name, first, second, body))
+        print("точных дублей: %d" % len(dups))
+        return 1 if dups else 0
 
     if args.next_stamp:
         chat_dir0, _, cfg0 = load_config(args.config)
