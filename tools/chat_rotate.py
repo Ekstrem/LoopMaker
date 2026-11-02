@@ -14,7 +14,9 @@
 Правила безопасности:
 - по умолчанию `--dry-run`, запись только с `--write`;
 - архив сканированием не обходится (каталог `archive` в SKIP у моста и линтера);
-- если миграция ключей невозможна (нет файла состояния) — ротация отказывается писать;
+- миграция ключей — best effort: мост держит состояние в памяти и может перезаписать файл;
+  это безопасно, потому что каталог rchive вообще не сканируется, а оставшиеся строки
+  в активном файле сохраняют свои ключи (имя файла не меняется);
 - активный файл получает строку-указатель на архив.
 """
 import argparse
@@ -135,6 +137,35 @@ def main():
         print("dry-run: ничего не изменено (добавь --write)")
         return 0
 
+    # Порядок важен: сначала мигрируем состояние моста (если не удалось — выходим,
+    # не трогая файлы), и только потом переносим строки. Иначе при ошибке на состоянии
+    # получим «файлы перенесены, ключи старые» = массовая повторная доставка.
+    mapping = {}
+    for line in moved:
+        if not TS_LINE.match(line):
+            continue
+        ts = TS_LINE.match(line).group(1)
+        mapping["%s|%s|" % (args.role, ts)] = "archive/%s/%s|%s|" % (args.role, name, ts)
+
+    if args.state and os.path.exists(args.state):
+        try:
+            with open(args.state, encoding="utf-8") as f:
+                state = json.load(f)
+            seen = state.get("seen") or []
+            changed = 0
+            for i, key in enumerate(seen):
+                for prefix, replacement in mapping.items():
+                    if str(key).startswith(prefix):
+                        seen[i] = str(key).replace(prefix, replacement, 1)
+                        changed += 1
+                        break
+            state["seen"] = seen
+            with open(args.state, "w", encoding="utf-8", newline="\n") as f:
+                json.dump(state, f, ensure_ascii=False)
+            print("  мигрировано ключей: %d" % changed)
+        except OSError as e:
+            sys.exit("chat_rotate: не удалось обновить состояние (%s) — файлы не тронуты" % e)
+
     os.makedirs(arch_dir, exist_ok=True)
     if os.path.exists(arch_path):
         sys.exit("chat_rotate: архив уже существует: %s" % arch_path)
@@ -144,36 +175,11 @@ def main():
     with open(arch_path, "w", encoding="utf-8", newline="\n") as f:
         f.write(archive_text)
 
-    pointer = ("- [%s] → архив: `archive/%s/%s` (%d сообщений, %s..%s). "
-               "Активный файл хранит последние %d; история не удалена."
-               % (time.strftime("%Y-%m-%d %H:%M"), args.role, name, len(moved),
-                  first_ts, last_ts, len(stay)))
+    pointer = ("_Архив: `archive/%s/%s` — %d сообщений (%s..%s). "
+               "Активный файл хранит последние %d; история не удалена._"
+               % (args.role, name, message_count(moved), first_ts, last_ts, message_count(stay)))
     with open(active, "w", encoding="utf-8", newline="\n") as f:
         f.write(head + "\n\n" + pointer + "\n" + "\n".join(stay) + "\n")
-
-    if args.state and os.path.exists(args.state):
-        # ключи не переносим поштучно: проще один раз переписать все ключи роли
-        mapping = {}
-        for line in moved:
-            if not TS_LINE.match(line):
-                continue
-            ts = TS_LINE.match(line).group(1)
-            # ключ начинается с имени файла; заменяем его на архивный путь
-            mapping["%s|%s|" % (args.role, ts)] = "archive/%s/%s|%s|" % (args.role, name, ts)
-        with open(args.state, encoding="utf-8") as f:
-            state = json.load(f)
-        seen = state.get("seen") or []
-        changed = 0
-        for i, key in enumerate(seen):
-            for prefix, replacement in mapping.items():
-                if str(key).startswith(prefix):
-                    seen[i] = str(key).replace(prefix, replacement, 1)
-                    changed += 1
-                    break
-        state["seen"] = seen
-        with open(args.state, "w", encoding="utf-8", newline="\n") as f:
-            json.dump(state, f, ensure_ascii=False)
-        print("  мигрировано ключей: %d" % changed)
 
     print("chat_rotate: готово. Не забудь коммит: активный файл + архив.")
     return 0

@@ -267,3 +267,23 @@ python tools/health.py --no-ci         # без сети (быстро, лока
    `tools/check_docs_size.py`.
 5. **Удаление правила — тоже коммит.** Если гейт снят или правило устарело, оно
    убирается в тот же день; иначе через месяц никто не знает, что действует.
+
+## 19. Транспорт и синхронизация
+
+В песочнице DSH git по умолчанию берёт **bundled** ssh из Git for Windows — он падает
+с `couldn't create signal pipe, Win32 error 5`, поэтому `git push origin` «не работает
+никогда», хотя права и ключи в порядке. Лечится **один раз на машину**:
+
+    git config --global core.sshCommand "C:/Windows/System32/OpenSSH/ssh.exe"
+    git ls-remote --heads origin main      # проверка: отвечает
+
+- **Синхронизация — одной командой:** `python tools/git_sync.py --role XX`
+  (wip по зоне → fetch → rebase --autostash → push → проверка «впереди 0»).
+- **`wip` только по зоне роли** (`zones` из `loop.config.json`), иначе захватишь чужие
+  правки: `--paths` для расширения, `--all` как осознанное исключение.
+- **HTTPS-фолбэк** — только если ssh недоступен: токен из личного хранилища (вне
+  репозитория) через переменную окружения, никогда в argv/`git config`/файл.
+- **Пути к личным хранилищам и токены в документах не пишем** — публичный репозиторий;
+  проверка: `tools/check_rule_docs.py`.
+- «Дошло» проверяется только после `fetch`: `git rev-list --count origin/main..HEAD` = 0;
+  SHA упоминаем после `git merge-base --is-ancestor`.
