@@ -35,16 +35,20 @@ be.md:  - [10:00] → @FE: посмотри контракт JWT
    мини-`AGENTS.md` для папки-зоны, шаблон проектного `AGENTS.md`, workflow'ы
    (`sweep.yml` — часовой обход, `guard-secrets.yml` — утечки, `chat-guards.yml` —
    лёгкие guard'ы на переписку).
-4. **[tools/](tools/)** — девять скриптов, работающих от конфига:
+4. **[tools/](tools/)** — тринадцать скриптов, работающих от конфига:
    - `check_paths.py` — guard: роль не вышла за свою папку (по префиксу коммита);
    - `stats.py` — таблица статусов задач в README (`--write` / `--check`);
+   - `status_lint.py` — линтер статусов: значение из списка, синонимы, обязательные поля;
+   - `migrate_statuses.py` — миграция значений статуса (по умолчанию dry-run);
    - `merge_chat.py` — сводка диалога из outbox-файлов;
    - `chat_inbox.py` — гейт координатора: есть ли вопрос без ответа;
    - `chat_lint.py` — линтер формата строки чата (пишет автору в `chat/_lint.md`);
    - `check_secrets.py` — секреты и их **фрагменты** в чате/задачах/доках (код 1 на находке);
    - `keycmp.py` — сравнить два секрета, не печатая значения;
    - `check_workflow_paths.py` — guard: у тяжёлых workflow есть фильтр путей (чат не гоняет CI);
-   - `sweep.py` — обход петли: задачи без движения и «обещано, но не начато».
+   - `sweep.py` — обход петли: задачи без движения и «обещано, но не начато»;
+   - `ci_metrics.py` — p50/p95 джобов CI (цифра вместо «долго»);
+   - `health.py` — дашборд здоровья петли: `HEALTH.md` + история замеров.
 
 ## Быстрый старт
 
@@ -52,6 +56,7 @@ be.md:  - [10:00] → @FE: посмотри контракт JWT
 python tools/check_paths.py --zones      # карта зон из loop.config.json
 python tools/check_paths.py --range HEAD~20..HEAD --report-only   # аудит истории
 python tools/stats.py --write            # обновить таблицу в README
+python tools/status_lint.py --config loop.config.json   # статусы и обязательные поля
 python tools/merge_chat.py               # собрать сводку чата
 python tools/chat_inbox.py               # вопросы к @TL без ответа (код 1 = есть)
 python tools/chat_lint.py                # формат строк чата (код 1 = есть нарушения)
@@ -59,6 +64,7 @@ python tools/check_secrets.py            # утечки секретов (код
 python tools/check_workflow_paths.py     # фильтры путей у workflow (код 1 = есть нарушения)
 python tools/ci_metrics.py --workflow-path ci-tests.yml   # p50/p95 джобов CI
 python tools/sweep.py --config loop.config.json   # обход: что стоит без движения
+python tools/health.py --write           # дашборд: HEALTH.md + история
 ```
 
 ## Принципы (коротко)

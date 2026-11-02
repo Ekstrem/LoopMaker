@@ -1,0 +1,47 @@
+name: Health (дашборд петли)
+
+# Раз в сутки собирает HEALTH.md из тех же гейтов, что и CI, и коммитит его
+# вместе с history.jsonl. Ничего не лечит и не гейтит — только делает состояние
+# петли наблюдаемым (см. AGENTS §16).
+
+on:
+  schedule:
+    - cron: "17 6 * * *"   # 06:17 UTC = 09:17 MSK
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: health
+  cancel-in-progress: true
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Собрать дашборд
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python tools/health.py --write
+      - name: В summary прогона
+        run: cat HEALTH.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Закоммитить, если изменилось
+        run: |
+          set -euo pipefail
+          git config user.name "loopmaker-bot"
+          git config user.email "loopmaker-bot@users.noreply.github.com"
+          git add HEALTH.md health/history.jsonl 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "изменений нет"
+            exit 0
+          fi
+          git commit -m "bot: дашборд здоровья петли $(date -u +%F)"
+          git push

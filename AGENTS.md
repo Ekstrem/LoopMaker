@@ -5,7 +5,7 @@
 проверяет → владелец закрывает. Между шагами не нужно ничего пересылать руками.
 
 Здесь — выжимка рабочей петли из проекта XDiary (6 ролей, 40 задач, два бэклога,
-чат без конфликтов) в переносимом виде: правила, форматы, шаблоны и двенадцать скриптов.
+чат без конфликтов) в переносимом виде: правила, форматы, шаблоны и тринадцать скриптов.
 
 > Этот файл DSH подхватывает автоматически. Если вы агент — сначала прочитайте §1–§5,
 > потом `loop.config.json` (§8): там зоны ролей именно для этого проекта.
@@ -177,6 +177,7 @@
 | `guard-secrets.yml` | push в `main` + `workflow_dispatch` | `tools/check_secrets.py` — секреты и их **фрагменты** в чате/задачах/доках; код 1 на находке |
 | `chat-guards.yml` | push **только** по `<backlog>/chat/**` | лёгкие guard'ы чата (линт формата + линт статусов + секреты); тяжёлые джобы на переписку не запускаются |
 | `sync-board.yml` | push по `<backlog>/**` **без** `chat/**` | задачи `.md` → GitHub Issues + Projects |
+| `health.yml` | `schedule` (раз в сутки) + `workflow_dispatch` | `tools/health.py` → `HEALTH.md` + `health/history.jsonl` (дашборд, не гейт) |
 | `ci-*.yml` | push по путям сервиса | сборка/тесты/Docker-образ |
 
 Важно: сводку чата **не коммитим** (`.gitignore`), её собирают локально
@@ -219,7 +220,7 @@
 
 | Копировать как есть | Писать под проект |
 |---|---|
-| `tools/check_paths.py`, `tools/stats.py`, `tools/merge_chat.py`, `tools/chat_inbox.py`, `tools/sweep.py`, `tools/check_secrets.py`, `tools/keycmp.py`, `tools/chat_lint.py`, `tools/check_workflow_paths.py`, `tools/ci_metrics.py`, `tools/status_lint.py`, `tools/migrate_statuses.py` | `loop.config.json` (зоны, папки, роли, статусы) |
+| `tools/check_paths.py`, `tools/stats.py`, `tools/merge_chat.py`, `tools/chat_inbox.py`, `tools/sweep.py`, `tools/check_secrets.py`, `tools/keycmp.py`, `tools/chat_lint.py`, `tools/check_workflow_paths.py`, `tools/ci_metrics.py`, `tools/status_lint.py`, `tools/migrate_statuses.py`, `tools/health.py` | `loop.config.json` (зоны, папки, роли, статусы) |
 | форматы задачи и строки чата | состав ролей и их компетенции |
 | ритуал проверки и закрытия | домен: что считается «готово» |
 | workflow-файлы | CI-специфика (язык, тесты, деплой) |
@@ -357,4 +358,32 @@
 
 Вопрос формулируется как **запрос ресурса или выбора приоритета**, а не как
 «переспросим, чтобы не ошибиться».
+
+## 16. Здоровье петли (дашборд)
+
+Оценки «на глаз» не масштабируются. Дашборд сводит к нескольким числам то, что уже
+считают гейты, и делает состояние петли наблюдаемым без чтения чата:
+
+| Метрика | Источник | Норма |
+|---|---|---|
+| Ошибки статусов | `tools/status_lint.py` | 0 |
+| Задачи без движения / «обещано, но не начато» | `tools/sweep.py` | 0 |
+| Гигиена гейтов: `stats --check`, `chat_lint --check`, `check_workflow_paths` | те же скрипты | 3/3 |
+| CI: худший p95 по тяжёлым джобам | GitHub API (считает сам `health.py`) | < 300 с |
+| Вопросы в чате без ответа | `tools/chat_inbox.py` | 0 |
+| Копии инструментов разошлись с LoopMaker (если репозиторий рядом) | сравнение `tools/*.py` | 0 |
+
+```bash
+python tools/health.py                 # таблица в stdout
+python tools/health.py --write         # + HEALTH.md и health/history.jsonl
+python tools/health.py --no-ci         # без сети (быстро, локально)
+```
+
+Расписание — `templates/health.yml`: раз в сутки, коммитит `HEALTH.md` и
+`health/history.jsonl` (в файле же тренд-спарклайны по последним замерам).
+Дашборд **не гейт**: он никогда не валит CI и ничего не чинит. Красная строка — повод
+открыть задачу, а не повод что-то автоматически менять.
+
+Правило: **новый гейт добавляется в дашборд тем же коммитом**, иначе через месяц никто
+не вспомнит, что он существует.
 

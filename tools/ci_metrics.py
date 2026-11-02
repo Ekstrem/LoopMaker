@@ -81,6 +81,7 @@ def main():
                     help="путь workflow, например .github/workflows/ci-tests.yml "
                          "(иначе берутся последние прогоны ВСЕХ workflow)")
     ap.add_argument("--out", default=None, help="куда записать markdown")
+    ap.add_argument("--json", action="store_true", help="машинный вывод (для дашборда)")
     ap.add_argument("--token", default=os.environ.get("GITHUB_TOKEN"))
     args = ap.parse_args()
 
@@ -124,8 +125,15 @@ def main():
              "Прогонов просмотрено: %d (успешные). «Отменённый прогон — не доказательство» "
              "(AGENTS §14)." % used, "",
              "| Джоб | Замеров | p50 | p95 | max |", "|---|---|---|---|---|"]
+    summary = {}
     for job in wanted:
         vals = samples[job]
+        summary[job] = {
+            "n": len(vals),
+            "p50": round(pct(vals, 50)) if vals else None,
+            "p95": round(pct(vals, 95)) if vals else None,
+            "max": round(max(vals)) if vals else None,
+        }
         if not vals:
             lines.append("| %s | 0 | — | — | — |" % job)
             continue
@@ -135,7 +143,11 @@ def main():
                   "Если p95 ниже 5 минут — отмена почти всегда ошибка._", ""]
     text = "\n".join(lines)
 
-    print(text)
+    if args.json:
+        print(json.dumps({"repo": repo, "runs": used, "jobs": summary},
+                         ensure_ascii=False, indent=2))
+    else:
+        print(text)
     if args.out:
         with open(args.out, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
