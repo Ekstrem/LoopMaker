@@ -5,7 +5,7 @@
 проверяет → владелец закрывает. Между шагами не нужно ничего пересылать руками.
 
 Здесь — выжимка рабочей петли из проекта XDiary (6 ролей, 40 задач, два бэклога,
-чат без конфликтов) в переносимом виде: правила, форматы, шаблоны и тринадцать скриптов.
+чат без конфликтов) в переносимом виде: правила, форматы, шаблоны и четырнадцать скриптов.
 
 > Этот файл DSH подхватывает автоматически. Если вы агент — сначала прочитайте §1–§5,
 > потом `loop.config.json` (§8): там зоны ролей именно для этого проекта.
@@ -91,7 +91,7 @@
 
 **Ритуал закрытия (5 шагов):**
 1. исполнитель сделал работу → `На проверке` + строка в чат;
-2. координатор проверил по коду/CI → «проверено, можно закрывать»;
+2. ревьюер домена (@AR архитектура, @DO инфра, @PO продукт, @TL остальное) проверил по коду/CI → «проверено, можно закрывать»; спор двух ревьюеров решает @TL;
 3. **статус `Закрыта` ставит владелец задачи**, не координатор;
 4. критерии не выполнены → задача не закрывается, формулируется дефект (новая задача);
 5. закрытие = критерии + CI зелёный + 1–2 строки в `## Результат` (что и где сделано).
@@ -178,6 +178,7 @@
 | `chat-guards.yml` | push **только** по `<backlog>/chat/**` | лёгкие guard'ы чата (линт формата + линт статусов + секреты); тяжёлые джобы на переписку не запускаются |
 | `sync-board.yml` | push по `<backlog>/**` **без** `chat/**` | задачи `.md` → GitHub Issues + Projects |
 | `health.yml` | `schedule` (раз в сутки) + `workflow_dispatch` | `tools/health.py` → `HEALTH.md` + `health/history.jsonl` (дашборд, не гейт) |
+| `guard-tools.yml` | push по `tools/**` | `tools/sync_tools.py --check` — копия инструмента не расходится с манифестом `tools/.sources.json` |
 | `ci-*.yml` | push по путям сервиса | сборка/тесты/Docker-образ |
 
 Важно: сводку чата **не коммитим** (`.gitignore`), её собирают локально
@@ -220,10 +221,22 @@
 
 | Копировать как есть | Писать под проект |
 |---|---|
-| `tools/check_paths.py`, `tools/stats.py`, `tools/merge_chat.py`, `tools/chat_inbox.py`, `tools/sweep.py`, `tools/check_secrets.py`, `tools/keycmp.py`, `tools/chat_lint.py`, `tools/check_workflow_paths.py`, `tools/ci_metrics.py`, `tools/status_lint.py`, `tools/migrate_statuses.py`, `tools/health.py` | `loop.config.json` (зоны, папки, роли, статусы) |
+| `tools/check_paths.py`, `tools/stats.py`, `tools/merge_chat.py`, `tools/chat_inbox.py`, `tools/sweep.py`, `tools/check_secrets.py`, `tools/keycmp.py`, `tools/chat_lint.py`, `tools/check_workflow_paths.py`, `tools/ci_metrics.py`, `tools/status_lint.py`, `tools/migrate_statuses.py`, `tools/health.py`, `tools/sync_tools.py` | `loop.config.json` (зоны, папки, роли, статусы) |
 | форматы задачи и строки чата | состав ролей и их компетенции |
 | ритуал проверки и закрытия | домен: что считается «готово» |
 | workflow-файлы | CI-специфика (язык, тесты, деплой) |
+
+**Копии инструментов не расходятся молча.** Проект не может чекаутить приватный
+LoopMaker в CI, поэтому инструменты копируются. Чтобы копия не «уехала» от шаблона:
+
+```bash
+python tools/sync_tools.py --check          # CI: копии совпадают с манифестом
+python tools/sync_tools.py --report         # чем копии отличаются от ../LoopMaker
+python tools/sync_tools.py --pull --from ../LoopMaker   # пересинхронизировать
+```
+
+Манифест — `tools/.sources.json` (sha256 тела каждого общего скрипта на момент синка).
+Правил копию руками — обновишь манифест тем же коммитом, иначе `guard-tools.yml` покраснеет.
 
 ## 11. Плагин `dsh-loopmaker` (этот же репозиторий)
 

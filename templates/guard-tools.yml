@@ -1,0 +1,29 @@
+name: Guard tools (копии инструментов)
+
+# Инструменты живут в LoopMaker и копируются в проект. Копия не должна расходиться
+# молча: правка копии без обновления tools/.sources.json — ошибка.
+# Синхронизация: python tools/sync_tools.py --pull --from ../LoopMaker
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - 'tools/**'
+      - '.github/workflows/guard-tools.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: guard-tools
+  cancel-in-progress: true
+
+jobs:
+  guard-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Копии совпадают с манифестом
+        run: python tools/sync_tools.py --check
