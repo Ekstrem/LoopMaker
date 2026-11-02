@@ -374,8 +374,10 @@ def main():
             chat_cfg = _cfg0.get("chat_time") or {}
             since = chat_cfg.get("canon_since")
             if not since:
-                print("chat_lint: в loop.config.json нет chat.canon_since — работаю без baseline")
-                since = None
+                # Fail closed: если baseline запрошен явно, а ключа нет — это ошибка
+                # конфигурации, а не повод молча мерить всю историю.
+                print("chat_lint: --since config, но в loop.config.json нет chat_time.canon_since")
+                return 2
         rows = find_multiline(chat_dir0, since=since)
         for name, line, cont, head in rows:
             print("%s:%d — +%d строк продолжения: %s" % (name, line, cont, head))
