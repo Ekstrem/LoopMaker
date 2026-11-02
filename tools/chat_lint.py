@@ -119,8 +119,10 @@ TS_CANON = re.compile(r"^-\s*\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]")
 
 
 STRICT = re.compile(
-    r"^-\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\s*→\s*@[A-Za-z]+:\s+\S"
+    r"^-\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\s*→\s*@[A-Za-z]+(?:\s*[/+,;]\s*@?[A-Za-z]+)*:\s+\S"
 )
+# Адресаты через `/` (исторически популярно) — канон это `+`, поэтому считаем отдельно.
+SLASH_ADDR = re.compile(r"^-\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\s*→\s*[^:]*[/,;][^:]*:")
 
 
 def count_tolerant(chat_dir, known_roles):
@@ -131,6 +133,7 @@ def count_tolerant(chat_dir, known_roles):
     """
     tolerant = 0
     total = 0
+    slash = 0
     for name in sorted(os.listdir(chat_dir)):
         if not name.endswith(".md") or name.lower() in SKIP:
             continue
@@ -144,7 +147,9 @@ def count_tolerant(chat_dir, known_roles):
                 total += 1
                 if not STRICT.match(stripped):
                     tolerant += 1
-    return tolerant, total
+                if SLASH_ADDR.match(stripped):
+                    slash += 1
+    return tolerant, total, slash
 
 
 def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0):
@@ -249,11 +254,14 @@ def main():
         print("нераспознанных строк: %d (новых: %d)" % (len(problems), len(fresh)))
         for name, role, line in problems[:20]:
             print("  %s [%s]: %s" % (name, role, line[:120]))
-        tolerant, total_msgs = count_tolerant(chat_dir, set(titles.keys()))
+        tolerant, total_msgs, slash = count_tolerant(chat_dir, set(titles.keys()))
         if tolerant:
             print("формат: %d из %d сообщений не каноном (без скобок, `->` или без `@`) —"
                   " распознаются, но пишем канон `- [YYYY-MM-DD HH:mm] → @role: текст`"
                   % (tolerant, total_msgs))
+        if slash:
+            print("адресаты: %d сообщений через `/`/`,` — канон `+`; мост теперь понимает и `/`, "
+                  "но чужие регексы — нет" % slash)
         if future or order:
             print("метки времени: впереди шкалы %d (сдвиг %d ч, допуск %d мин), порядок нарушен %d"
               % (len(future), shift, tolerance, len(order)))

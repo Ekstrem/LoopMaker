@@ -14,6 +14,7 @@
     python tools/git_sync.py --role lm --paths 5-tech-backlog/chat/lm.md   # узкий wip
 """
 import argparse
+import os
 import subprocess
 import sys
 
@@ -70,6 +71,20 @@ def main():
         say("в переменной окружения (не в argv), подробности — docs/CI-RULES.md, раздел «Пуш».")
         return 2
     say("git_sync: транспорт ok")
+
+    # Висящий rebase/автостэш: `rebase --autostash` в цикле с push оставляет за собой
+    # `.git/rebase-merge` без `head-name`, после чего ни один rebase не стартует.
+    git_dir = git("rev-parse", "--git-dir").stdout.strip() or ".git"
+    for marker in ("rebase-merge", "rebase-apply"):
+        path = os.path.join(git_dir, marker)
+        if os.path.exists(path):
+            say("")
+            say("git_sync: найден незавершённый rebase (%s)." % marker)
+            say("  Сначала восстанови и объяви в чат (§5.3): `git rebase --abort`;")
+            say("  если abort не работает (could not read head-name) — это повреждённые")
+            say("  метаданные: объявить `→ всем`, восстанавливает координатор, автостэш")
+            say("  спасать через `git stash apply <sha>`, SHA записать в чат.")
+            return 2
 
     if args.dry_run:
         say("dry-run: дальше не иду")
