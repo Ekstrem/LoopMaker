@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# КОПИЯ из LoopMaker/chat_lint.py (источник правды там; правка — в обоих местах).
 """Линтер чата: находит строки, которые парсер не понял, и пишет автору.
 
 Зачем: формат строки чата — контракт трёх потребителей (`lib/parse.js`,
@@ -35,6 +36,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 LINT_FILE = "_lint.md"
 STATE_FILE = ".lint-state.json"
+CI = os.environ.get("CI", "").lower() in ("1", "true", "yes")
 SKIP = {"readme.md", "_dialogue.md", LINT_FILE.lower()}
 
 # Канон и терпимость — как в lib/parse.js: скобки или время без скобок,
@@ -152,7 +154,40 @@ def count_tolerant(chat_dir, known_roles):
     return tolerant, total, slash
 
 
-def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0):
+TS_ANY = re.compile(r"-\s*\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]")
+
+
+def chat_max_stamp(chat_dir):
+    """Максимальная метка в чате — шкала, которую реально использует проект.
+
+    Зачем: если шкала чата уехала вперёд (у нас — на ~4.6 суток), машинные часы дают
+    метку «в прошлое»: сообщение физически оказывается выше по файлу, и координатор
+    его не видит. Инструмент не должен сам создавать дрейф.
+    """
+    best = None
+    if not os.path.isdir(chat_dir):
+        return None
+    for name in sorted(os.listdir(chat_dir)):
+        if not name.endswith(".md"):
+            continue
+        try:
+            with open(os.path.join(chat_dir, name), encoding="utf-8-sig") as f:
+                for line in f:
+                    m = TS_ANY.match(line.strip())
+                    if not m:
+                        continue
+                    try:
+                        ts = datetime.datetime.strptime(m.group(1), "%Y-%m-%d %H:%M")
+                    except ValueError:
+                        continue
+                    if best is None or ts > best:
+                        best = ts
+        except OSError:
+            continue
+    return best
+
+
+def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0, use_clock=True):
     """Метки времени: в будущем (часы врут) и немонотонность внутри файла.
 
     Возвращает [(файл, метка, вид)], вид — "future" или "order".
@@ -160,6 +195,7 @@ def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0):
     поэтому по умолчанию это предупреждения (см. --strict-times).
     """
     future, order = [], []
+    collected = []
     for name in sorted(os.listdir(chat_dir)):
         if not name.endswith(".md") or name.lower() in SKIP:
             continue
@@ -186,13 +222,30 @@ def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0):
                     ts = datetime.datetime.strptime(raw, "%Y-%m-%d %H:%M")
                 except ValueError:
                     continue
-                expected = now + datetime.timedelta(hours=shift_hours)
-                if ts > expected + datetime.timedelta(minutes=tolerance_min):
-                    lag = ts - expected
-                    future.append((name, raw, int(lag.total_seconds() // 3600)))
                 if prev is not None and ts < prev:
                     order.append((name, raw, prev.strftime("%Y-%m-%d %H:%M")))
                 prev = ts
+                collected.append((name, raw, ts))
+    # PDR-21 (@TL 02:45): в CI часы раннера — UTC, а чат пишется в MSK(+3).
+    # Сравнивать с now() бессмысленно: любая местная метка выглядит «будущим».
+    #
+    # Важно, какую опору брать. «Максимум по чату» НЕ работает: опечатка сама
+    # становится максимумом и никогда не флагуется (проверено — метка «+2 дня»
+    # прошла молча). Поэтому опора для файла — максимум по ОСТАЛЬНЫМ файлам:
+    # роль, уехавшая вперёд относительно всех, ловится, а часовой пояс — нет.
+    per_file = {}
+    for name, _raw, ts in collected:
+        if ts > per_file.get(name, ts):
+            per_file[name] = ts
+    for name, raw, ts in collected:
+        if use_clock:
+            reference = now + datetime.timedelta(hours=shift_hours)
+        else:
+            others = [v for k, v in per_file.items() if k != name]
+            reference = max(others) if others else now
+        if ts > reference + datetime.timedelta(minutes=tolerance_min):
+            lag = ts - reference
+            future.append((name, raw, int(lag.total_seconds() // 3600)))
     return future, order
 
 
@@ -227,9 +280,15 @@ def main():
         chat_dir0, _, cfg0 = load_config(args.config)
         shift0 = int((cfg0.get("chat_time") or {}).get("shift_hours", 0))
         tz0 = int((cfg0.get("chat_time") or {}).get("tz_offset_hours", 3))
-        # метка = сейчас в TZ проекта + сдвиг шкалы (по умолчанию 0)
-        print((datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) + datetime.timedelta(hours=tz0 + shift0))
-              .strftime("%Y-%m-%d %H:%M"))
+        mx = chat_max_stamp(chat_dir0)
+        machine = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                   + datetime.timedelta(hours=tz0 + shift0))
+        # Шкала чата первична: метка = максимум по чату + 1 минута (не «в прошлое»).
+        # Если чат пуст — машинные часы в TZ проекта.
+        stamp = (mx + datetime.timedelta(minutes=1)) if mx else machine
+        if mx and machine > stamp:
+            stamp = machine  # если машина внезапно ушла вперёд — берём её
+        print(stamp.strftime("%Y-%m-%d %H:%M"))
         return 0
 
     chat_dir, titles, cfg = load_config(args.config)
@@ -253,7 +312,12 @@ def main():
     # Метки в чате — в TZ проекта (MSK). Раннер GitHub живёт в UTC, поэтому «сейчас»
     # считаем как UTC + смещение проекта, иначе --strict-times краснеет на ровных метках.
     now_project = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) + datetime.timedelta(hours=tz_offset + shift))
-    future, order = scan_times(chat_dir, set(titles.keys()), now_project, tolerance, shift)
+    # PDR-21 (@TL 02:45): в CI опорная точка — САМАЯ ПОЗДНЯЯ метка в чате, а не часы
+    # раннера. Причина: раннер в UTC, чат в MSK(+3); любая местная метка выглядела
+    # «будущим». Вне CI (машина в TZ проекта) остаётся сравнение с текущим временем —
+    # там оно осмысленно и ловит метку, уехавшую вперёд по ошибке.
+    future, order = scan_times(chat_dir, set(titles.keys()), now_project, tolerance, shift,
+                               use_clock=not CI)
 
     if args.report or args.check:
         print("нераспознанных строк: %d (новых: %d)" % (len(problems), len(fresh)))
