@@ -1,0 +1,71 @@
+name: Chat guards
+
+# Шаблон для нового проекта: скопируйте в <проект>/.github/workflows/chat-guards.yml
+# и замените `<backlog>` на свою папку бэклога (например `5-backlog`).
+#
+# Зачем отдельный workflow:
+#   * переписка ролей — самый частый вид пуша; гонять на неё test/E2E бессмысленно
+#     и дорого;
+#   * и главное: если тяжёлый workflow стоит в очереди с cancel-in-progress,
+#     каждый коммит в чат отменяет идущий E2E. Поэтому тяжёлые workflow должны
+#     иметь `paths-ignore: <backlog>/chat/**`, а guard'ы чата — жить здесь.
+#
+# Парная настройка в тяжёлом workflow:
+#
+#   on:
+#     push:
+#       branches: ["main"]
+#       paths-ignore:
+#         - '<backlog>/chat/**'
+#   # и НЕ ставить cancel-in-progress для test/E2E — они идут в очередь (см. AGENTS §14)
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - '<backlog>/chat/**'
+
+concurrency:
+  group: chat-guards
+  cancel-in-progress: true
+
+jobs:
+  check-chat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check chat format (нет молча потерянных сообщений)
+        run: python tools/chat_lint.py --config loop.config.json --check
+
+  guard-secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (нужна история для --range)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Проверить секреты и их фрагменты в пушимом диапазоне
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          set -uo pipefail
+          head="${AFTER:-HEAD}"
+          git cat-file -e "${head}^{commit}" 2>/dev/null || head=HEAD
+          if [ -n "${BEFORE:-}" ] \
+             && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+             && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            range="${BEFORE}..${head}"
+          else
+            range="${head}~1..${head}"
+          fi
+          echo "range: ${range}"
+          python tools/check_secrets.py --config loop.config.json --range "$range"

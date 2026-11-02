@@ -14,6 +14,13 @@
   `chat_inbox.py`, `sweep.py` (обход: задачи без движения + «обещано, но не начато»).
 - Шаблон часового обхода — `templates/sweep.yml`: `schedule` + `workflow_dispatch`,
   один открытый issue-сигнал, сам закрывается, когда чисто. Проверено в XDiary.
+- Guard секретов и линтер чата: `tools/check_secrets.py`, `tools/chat_lint.py`,
+  `tools/keycmp.py` + `templates/guard-secrets.yml` и `templates/chat-guards.yml`.
+- Дисциплина CI (AGENTS §14): окно 5 минут на отмену прогона, тяжёлые джобы в очередь
+  (без `cancel-in-progress`), `paths-ignore` для переписки, «отменённый прогон — не
+  доказательство». Перенесено из XDiary (DO-023, 05.11).
+- Правило «что спрашивать у владельца» (AGENTS §15) — из XDiary: сначала ADR/канвас,
+  у владельца спрашиваем ресурсы и приоритеты, а не уже принятые решения.
 - Отправка в Telegram: код есть (`lib/telegram.js`), **выключено** (`tgEnabled: false`).
 
 ## Дальше
