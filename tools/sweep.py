@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Обход петли: что стоит без движения и где «обещано, но не начато».
 
 Обычный CI срабатывает на push и поэтому не видит *время*: задача может стоять
@@ -76,6 +76,9 @@ def normalize(raw, statuses):
     rejected = pick(statuses, "отклон", statuses[-1])
     review = pick(statuses, "проверк", closed)
     work = pick(statuses, "работе", closed)
+    pause = pick(statuses, "пауз", work)
+    groom = pick(statuses, "проработ", work)
+    todo = pick(statuses, "todo", work)
     if "отклон" in s:
         return rejected, None
     for syn in ("выполн", "готов", "done", "сделана"):
@@ -83,8 +86,14 @@ def normalize(raw, statuses):
             return closed, "выполнена"
     if "закрыт" in s:
         return closed, None
-    if "проверк" in s:
+    if "пауз" in s:
+        return pause, None
+    if "проработ" in s:
+        return groom, None
+    if "проверк" in s or "ревью" in s:
         return review, None
+    if "todo" in s or "в очереди" in s:
+        return todo, None
     if "работе" in s:
         return work, None
     return statuses[0], None
@@ -95,7 +104,7 @@ def git_ts(path):
     try:
         out = subprocess.run(
             ["git", "log", "-1", "--format=%ct", "--", path],
-            capture_output=True, text=True, check=False,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
         )
         v = out.stdout.strip()
         return int(v) if v.isdigit() else None
@@ -114,6 +123,15 @@ def result_kind(text, status_raw):
     return "inline" if len(status_raw) >= 20 else "none"
 
 
+def pause_reason(text):
+    """Текст причины паузы: `**Пауза:** …` или блок `## Пауза`."""
+    m = re.search(r"Пауза:\*\*\s*(.+)", text)
+    if m:
+        return m.group(1).strip()
+    m = re.search(r"^##\s+Пауза\s*$(.*?)(?=^##\s|\Z)", text, re.M | re.S)
+    return m.group(1).strip() if m else ""
+
+
 def parse_chat_ts(raw, tz_offset_hours):
     """'2026-11-01 15:04' (местное время проекта) -> unix seconds UTC."""
     for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
@@ -128,8 +146,15 @@ def parse_chat_ts(raw, tz_offset_hours):
 def scan_tasks(cfg, args, now):
     statuses = cfg.get("statuses") or ["Открыта", "В работе", "На проверке", "Закрыта", "Отклонена"]
     backlog = cfg.get("backlog") or "5-backlog"
-    findings = {"review": [], "work": [], "no_result": [], "vocab": []}
+    findings = {"stale": [], "no_result": [], "vocab": [], "pause_no_reason": []}
     tasks = {}
+
+    # Пороги «без движения» по статусу: config → sweep.thresholds.
+    # Совместимость: старые review_hours/work_hours работают, если thresholds нет.
+    thresh = dict((cfg.get("sweep") or {}).get("thresholds") or {})
+    if not thresh:
+        thresh[pick(statuses, "проверк", statuses[-1])] = args.review_hours
+        thresh[pick(statuses, "работе", statuses[-1])] = args.work_hours
 
     folders = [f.get("folder") for f in (cfg.get("task_folders") or []) if f.get("folder")]
     if not folders:
@@ -161,18 +186,19 @@ def scan_tasks(cfg, args, now):
                 continue
             if synonym:
                 findings["vocab"].append({**item, "why": "синоним вместо «%s»" % status})
-            if status == pick(statuses, "проверк", statuses[-1]) and age_h is not None \
-                    and age_h >= args.review_hours:
-                findings["review"].append(item)
-            if status == pick(statuses, "работе", statuses[-1]) and age_h is not None \
-                    and age_h >= args.work_hours:
-                findings["work"].append(item)
+            limit = thresh.get(status)
+            if limit is not None and age_h is not None and age_h >= limit:
+                findings["stale"].append({**item, "limit": limit})
+            if status == pick(statuses, "пауз", ""):
+                if len(pause_reason(text)) < 10:
+                    findings["pause_no_reason"].append(item)
             if status == pick(statuses, "закрыт", statuses[-1]):
                 kind = result_kind(text, raw)
                 if kind != "block":
                     findings["no_result"].append(
                         {**item, "why": "только в строке статуса" if kind == "inline"
                          else "пояснения нет"})
+    findings["_statuses"] = statuses
     return findings, tasks, statuses
 
 
@@ -228,7 +254,7 @@ def scan_git_claims(cfg, args, tasks, statuses, now):
     try:
         out = subprocess.run(
             ["git", "log", "--since=" + since, "--format=%h%x1f%cs%x1f%s"],
-            capture_output=True, text=True, check=False,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
         )
         rows = out.stdout
     except OSError:
@@ -254,7 +280,9 @@ def scan_git_claims(cfg, args, tasks, statuses, now):
 
 
 def render(findings, claims, args):
-    total = sum(len(v) for v in findings.values()) + len(claims)
+    buckets = {k: v for k, v in findings.items() if not k.startswith("_")}
+    total = sum(len(v) for v in buckets.values()) + len(claims)
+    order = findings.get("_statuses") or []
     stamp = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
     out = ["# Обход петли — %s" % stamp, ""]
     if not total:
@@ -279,17 +307,24 @@ def render(findings, claims, args):
     if claims:
         bucket("Обещано, но не начато", claims,
                "Первый шаг — `Статус: В работе` и строка в чат, иначе ход был пустой.")
-    if findings["review"]:
-        bucket("Ждут проверки дольше %d ч" % args.review_hours, findings["review"],
-               "Проверить и написать владельцу «можно закрывать».")
-    if findings["work"]:
-        bucket("В работе дольше %d ч" % args.work_hours, findings["work"],
-               "Спросить роль в чате: жив ли, что мешает.")
-    if findings["no_result"]:
-        bucket("Закрыты без блока «## Результат»", findings["no_result"],
+    if buckets.get("stale"):
+        grouped = {}
+        for it in buckets["stale"]:
+            grouped.setdefault(it["status"], []).append(it)
+        status_order = [s for s in order if s in grouped] + \
+                       [s for s in grouped if s not in order]
+        for st in status_order:
+            items = grouped[st]
+            bucket("«%s» дольше %d ч" % (st, items[0]["limit"]), items,
+                   "Решить: продолжать, перевести в следующий статус или в паузу.")
+    if buckets.get("pause_no_reason"):
+        bucket("«В паузе» без причины", buckets["pause_no_reason"],
+               "Дописать `Пауза:` и `Разблокирует:` — иначе пауза ничего не сообщает.")
+    if buckets.get("no_result"):
+        bucket("Закрыты без блока «## Результат»", buckets["no_result"],
                "Дописать 1–2 строки: что и где сделано.")
-    if findings["vocab"]:
-        bucket("Статус вне словаря", findings["vocab"],
+    if buckets.get("vocab"):
+        bucket("Статус вне словаря", buckets["vocab"],
                "Только значения из loop.config.json `statuses`.")
 
     out += ["---", "Всего находок: %d." % total, ""]

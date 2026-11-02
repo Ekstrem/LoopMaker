@@ -46,19 +46,28 @@ def pick(statuses, word, default):
 
 
 def normalize(raw, statuses):
-    """«Выполнена»/«Готово»/«Done» -> статус закрытия из конфига."""
+    """Привести значение к канону: синонимы и «почти-статусы» -> статус из конфига."""
     s = raw.strip().lower()
     closed = pick(statuses, "закрыт", statuses[-1])
     rejected = pick(statuses, "отклон", statuses[-1])
     review = pick(statuses, "проверк", closed)
     work = pick(statuses, "работе", closed)
+    pause = pick(statuses, "пауз", work)
+    groom = pick(statuses, "проработ", work)
+    todo = pick(statuses, "todo", work)
     if "отклон" in s:
         return rejected
     if "закрыт" in s or "выполн" in s or "готов" in s or "done" in s:
         return closed
-    if "на проверке" in s or "проверк" in s:
+    if "пауз" in s:
+        return pause
+    if "проработ" in s:
+        return groom
+    if "проверк" in s or "ревью" in s:
         return review
-    if "в работе" in s or "работе" in s:
+    if "todo" in s or "в очереди" in s:
+        return todo
+    if "работе" in s:
         return work
     return statuses[0]
 

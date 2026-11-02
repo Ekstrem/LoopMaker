@@ -49,6 +49,7 @@
           ar: Architect
           tl: TechLead
           po: PO
+          lm: LoopMaster
         # Явные переопределения, если заголовок сессии не собирается шаблоном.
         sessions: {}
         # Текст, который получает адресат. {from} {to} {text} {ts} {file}.
