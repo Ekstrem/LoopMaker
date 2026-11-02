@@ -24,6 +24,7 @@
     python tools/chat_lint.py --check    # код 1, если есть нераспознанные строки (CI)
 """
 import argparse
+import datetime
 import hashlib
 import json
 import os
@@ -58,7 +59,7 @@ def load_config(path):
     # Путь к бэклогу — относительно самого конфига, а не текущей папки.
     base = os.path.dirname(os.path.abspath(path))
     chat_dir = backlog if os.path.isabs(backlog) else os.path.join(base, backlog)
-    return os.path.join(chat_dir, "chat"), config.get("role_titles", {})
+    return os.path.join(chat_dir, "chat"), config.get("role_titles", {}), config
 
 
 def load_state(chat_dir):
@@ -114,6 +115,44 @@ def scan(chat_dir, known_roles):
     return problems
 
 
+TS_CANON = re.compile(r"^-\s*\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]")
+
+
+def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0):
+    """Метки времени: в будущем (часы врут) и немонотонность внутри файла.
+
+    Возвращает [(файл, метка, вид)], вид — "future" или "order".
+    Не ошибка формата: старые файлы писались «по памяти» и уехали вперёд,
+    поэтому по умолчанию это предупреждения (см. --strict-times).
+    """
+    future, order = [], []
+    for name in sorted(os.listdir(chat_dir)):
+        if not name.endswith(".md") or name.lower() in SKIP:
+            continue
+        role = name[:-3].lower()
+        if role not in known_roles:
+            continue
+        prev = None
+        with open(os.path.join(chat_dir, name), encoding="utf-8-sig") as handle:
+            for line in handle:
+                m = TS_CANON.match(line.strip())
+                if not m:
+                    continue
+                raw = m.group(1)
+                try:
+                    ts = datetime.datetime.strptime(raw, "%Y-%m-%d %H:%M")
+                except ValueError:
+                    continue
+                expected = now + datetime.timedelta(hours=shift_hours)
+                if ts > expected + datetime.timedelta(minutes=tolerance_min):
+                    lag = ts - expected
+                    future.append((name, raw, int(lag.total_seconds() // 3600)))
+                if prev is not None and ts < prev:
+                    order.append((name, raw, prev.strftime("%Y-%m-%d %H:%M")))
+                prev = ts
+    return future, order
+
+
 def notice(role, titles, line, now):
     author = titles.get(role, role.upper())
     short = line if len(line) <= 160 else line[:157] + "..."
@@ -130,6 +169,10 @@ def main():
     parser.add_argument("--config", default=os.path.join(HERE, "..", "loop.config.json"))
     parser.add_argument("--report", action="store_true", help="только показать")
     parser.add_argument("--check", action="store_true", help="код 1 при находках (CI)")
+    parser.add_argument("--strict-times", action="store_true",
+                        help="метки в будущем и немонотонные — ошибка (по умолчанию предупреждение)")
+    parser.add_argument("--next-stamp", action="store_true",
+                        help="напечатать метку для новой строки (часы машины + сдвиг проекта)")
     args = parser.parse_args()
 
     try:
@@ -137,7 +180,14 @@ def main():
     except Exception:
         pass
 
-    chat_dir, titles = load_config(args.config)
+    if args.next_stamp:
+        chat_dir0, _, cfg0 = load_config(args.config)
+        shift0 = int((cfg0.get("chat_time") or {}).get("shift_hours", 0))
+        print((datetime.datetime.now() + datetime.timedelta(hours=shift0))
+              .strftime("%Y-%m-%d %H:%M"))
+        return 0
+
+    chat_dir, titles, cfg = load_config(args.config)
     if not os.path.isdir(chat_dir):
         sys.exit("chat_lint: нет папки %s" % chat_dir)
 
@@ -152,11 +202,24 @@ def main():
             continue
         fresh.append((key, role, line))
 
+    shift = int((cfg.get("chat_time") or {}).get("shift_hours", 0))
+    tolerance = int((cfg.get("chat_time") or {}).get("tolerance_min", 120))
+    future, order = scan_times(chat_dir, set(titles.keys()), datetime.datetime.now(),
+                               tolerance, shift)
+
     if args.report or args.check:
         print("нераспознанных строк: %d (новых: %d)" % (len(problems), len(fresh)))
         for name, role, line in problems[:20]:
             print("  %s [%s]: %s" % (name, role, line[:120]))
-        return 1 if problems and args.check else 0
+        if future or order:
+            print("метки времени: впереди шкалы %d (сдвиг %d ч, допуск %d мин), порядок нарушен %d"
+              % (len(future), shift, tolerance, len(order)))
+            for name, raw, days in future[:5]:
+                print("  %s: %s — на %d дн. впереди часов машины" % (name, raw, days))
+            for name, raw, prev in order[:5]:
+                print("  %s: %s после %s — порядок нарушен" % (name, raw, prev))
+        bad = problems or ((future or order) and args.strict_times)
+        return 1 if bad and args.check else 0
 
     if not fresh:
         print("chat_lint: всё чисто, нераспознанных строк нет")
