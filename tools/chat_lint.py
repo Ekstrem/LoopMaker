@@ -187,13 +187,19 @@ def chat_max_stamp(chat_dir):
     return best
 
 
-def find_multiline(chat_dir):
+def find_multiline(chat_dir, since=None):
     """Многострочные сообщения: строка-сообщение, за которой идут строки-продолжения.
 
     Доставка/сводка берут только первую строку, поэтому продолжения теряются.
     Возвращает [(файл, номер строки сообщения, число строк-продолжений, начало текста)].
     """
     out = []
+    since_ts = None
+    if since:
+        try:
+            since_ts = datetime.datetime.strptime(since.strip(), "%Y-%m-%d %H:%M")
+        except ValueError:
+            since_ts = None
     for name in sorted(os.listdir(chat_dir)):
         if not name.endswith(".md"):
             continue
@@ -220,6 +226,15 @@ def find_multiline(chat_dir):
                     continue
                 cont += 1
                 j += 1
+            if cont and since_ts is not None:
+                mts = TS_ANY.search(s)
+                if mts:
+                    try:
+                        when = datetime.datetime.strptime(mts.group(1), "%Y-%m-%d %H:%M")
+                        if when <= since_ts:
+                            cont = 0
+                    except ValueError:
+                        pass
             if cont:
                 out.append((name, start, cont, s[:60]))
             i = j
@@ -335,6 +350,8 @@ def main():
                         help="метки в будущем и немонотонные — ошибка (по умолчанию предупреждение)")
     parser.add_argument("--strict", action="store_true",
                         help="считать находки ошибкой (для --multiline)")
+    parser.add_argument("--since", default=None,
+                        help="учитывать только сообщения новее метки (YYYY-MM-DD HH:MM)")
     parser.add_argument("--multiline", action="store_true",
                         help="показать многострочные сообщения (продолжения теряются в сводке)")
     parser.add_argument("--dups", action="store_true",
@@ -350,7 +367,7 @@ def main():
 
     if args.multiline:
         chat_dir0, _, _cfg0 = load_config(args.config)
-        rows = find_multiline(chat_dir0)
+        rows = find_multiline(chat_dir0, since=args.since)
         for name, line, cont, head in rows:
             print("%s:%d — +%d строк продолжения: %s" % (name, line, cont, head))
         per = {}
@@ -360,7 +377,9 @@ def main():
             len(rows), ", ".join("%s: %d" % kv for kv in sorted(per.items())) or "нет"))
         # Историю не переписываем (D-07), поэтому по умолчанию это отчёт, а не ошибка:
         # код 1 только со --strict — иначе гейт был бы вечно красным из-за старых сообщений.
-        return 1 if (rows and args.strict) else 0
+        # С --since это уже «новые нарушения» (долг отфильтрован) — код 1,
+        # без --since это отчёт по долгу — код 0, если не передан --strict.
+        return 1 if (rows and (args.strict or args.since)) else 0
 
     if args.dups:
         chat_dir0, _, _cfg0 = load_config(args.config)
