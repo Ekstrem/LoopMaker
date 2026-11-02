@@ -351,6 +351,46 @@ def metric_chat_format(root):
     return int(m.group(1)), int(m.group(2))
 
 
+def metric_ci_reach(root, cfg, enabled=True, limit=15):
+    """Доля прогонов, дошедших до шагов (не вытесненных из очереди).
+
+    Считается по API: берём последние N прогонов; для `cancelled` смотрим джобы —
+    если у всех шагов ноль, прогон «пустой» (вытеснение), а не результат.
+    Возвращает (reach_pct, total, void) или (None, 0, 0) при недоступности API.
+    """
+    if not enabled:
+        return None, 0, 0
+    repo = (cfg.get("health") or {}).get("repo") or "Ekstrem/XDiary"
+    token = os.environ.get("GITHUB_TOKEN")
+    headers = {"Accept": "application/vnd.github+json"}
+    if token:
+        headers["Authorization"] = "Bearer %s" % token
+    try:
+        req = urllib.request.Request("%s/repos/%s/actions/runs?per_page=%d" % (API, repo, limit),
+                                     headers=headers)
+        data = json.load(urllib.request.urlopen(req, timeout=20))
+    except Exception:
+        return None, 0, 0
+    runs = [r for r in data.get("workflow_runs", []) if r.get("status") == "completed"]
+    if not runs:
+        return None, 0, 0
+    void = 0
+    for r in runs:
+        if r.get("conclusion") != "cancelled":
+            continue
+        try:
+            req = urllib.request.Request("%s/repos/%s/actions/runs/%s/jobs" % (API, repo, r["id"]),
+                                         headers=headers)
+            jobs = json.load(urllib.request.urlopen(req, timeout=20)).get("jobs", [])
+        except Exception:
+            continue
+        if sum(len(j.get("steps") or []) for j in jobs) == 0:
+            void += 1
+    total = len(runs)
+    reach = round(100.0 * (total - void) / total)
+    return reach, total, void
+
+
 def metric_inbox(root):
     rc, out = run(root, ["tools/chat_inbox.py"])
     m = re.search(r"(\d+)", out or "")
@@ -498,6 +538,9 @@ def main():
         "| Гейты (stats/chat/wf) | %d/%d | %d/%d | %s |" % (
             gates_ok, gates_total, gates_total, gates_total,
             cell(gates_ok == gates_total)),
+        "| Прогоны, дошедшие до шагов | %s | >= 90%% | %s |" % (
+            "n/a" if reach is None else "%d%% из %d (пустых %d)" % (reach, reach_total, reach_void),
+            "🟢" if (reach is None or reach >= 90) else "🟡"),
         "| CI p95 (худший джоб) | %s | < 300 с | %s |" % (
             "n/a" if p95 is None else "%d с" % p95, "🟢" if (p95 is None or p95 < 300) else "🔴"),
         "| Вопросы в чате без ответа | %s | 0 | %s |" % (
