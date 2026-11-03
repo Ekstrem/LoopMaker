@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# КОПИЯ из LoopMaker/check_secrets.py (источник правды там; правка — в обоих местах).
 """Guard: утечки секретов в текстах петли (чат, задачи, доки).
 
 Зачем отдельно от «правил в AGENTS.md»: правило не сработало. В XDiary роль
@@ -39,6 +40,17 @@ PLACEHOLDER_HINTS = (
     "changeme", "your-", "yourkey", "your_key", "<", ">", "${", "{{", "***",
     "xxx", "placeholder", "example", "dummy", "redacted", "hidden", "secret-here",
 )
+# DO-065: что сканируем. `.sh` не сканировался вообще — подложенный токен проходил.
+SCAN_EXTS = (".md", ".txt", ".json", ".yml", ".yaml", ".sh", ".ps1", ".py", ".env.example")
+
+# Файлы, которые содержат сами шаблоны поиска (allow-list с причиной, не «шум»):
+#   tools/check_secrets.py — свои же паттерны;
+#   tools/check_rule_docs.py — регэксп `ghp_|gho_|...` для проверки документации.
+ALLOWLIST = {
+    "tools/check_secrets.py": "собственные шаблоны сканера",
+    "tools/check_rule_docs.py": "регэксп-паттерн проверки документации",
+}
+
 SKIP_VALUE_PREFIXES = ("$", "os.", "process.env", "env.", "config.", "getenv", "{", "(")
 SKIP_VALUES = {"", "null", "none", "true", "false", '""', "''", "string", "password",
                "token", "secret", "write", "read", "admin", "bearer",
@@ -125,6 +137,15 @@ def default_paths(cfg):
         os.path.join(chat, "*.md"),
         os.path.join(backlog, "**", "*.md"),
         "README.md", "CHANGELOG.md", "AGENTS.md",
+        # DO-065: зелёный guard-secrets не значил «секретов нет», пока не сканировались
+        # скрипты и инфраструктура. Подложенный `ghp_` в `.sh` проходил незамеченным.
+        "9-tests/**/*.sh",
+        "9-tests/**/*.ps1",
+        "7-deploy/**/*.sh",
+        "7-deploy/**/*.ps1",
+        "7-deploy/**/*.yml",
+        "7-deploy/**/*.yaml",
+        "tools/**/*.py",
     ]
 
 
@@ -138,9 +159,9 @@ def expand_patterns(root, cfg):
         pat = pat.replace("\\", "/")
         for path in _glob(os.path.join(root, *pat.split("/"))):
             rel = os.path.relpath(path, root).replace("\\", "/")
-            if os.path.basename(rel) in skip:
+            if os.path.basename(rel) in skip or rel in ALLOWLIST:
                 continue
-            if rel.endswith(".md") or rel.endswith(".txt") or rel.endswith(".json") or rel.endswith(".yml"):
+            if rel.endswith(SCAN_EXTS) or os.path.basename(rel).startswith("Dockerfile"):
                 files.append(path)
     return sorted(set(files))
 
@@ -206,7 +227,30 @@ def looks_like_identifier_chain(value):
     return all(p.isalpha() and len(p) >= 3 and p.lower() in IDENTIFIER_WORDS for p in parts)
 
 
+PLACEHOLDER_RE = re.compile(r"^<[^>]*>$|(your[_-]|placeholder|changeme|change_me|xxx|example|dummy|redacted|скрыт)",
+                           re.IGNORECASE)
+
+
+REGEX_HINT_RE = re.compile(r"\\b|\\w|\\s|\||\(|\)|\[|\]")
+
+
+def looks_like_regex(value):
+    """`\b(ghp_|gho_|...` — это шаблон поиска, а не секрет: секреты не содержат `\b` и `|`."""
+    v = (value or "")
+    return bool(REGEX_HINT_RE.search(v))
+
+
+def looks_like_placeholder(value):
+    """`<client-JWT>`, `YOUR_TOKEN`, `changeme` — примеры в usage, а не секреты (DO-065)."""
+    v = (value or "").strip().strip('"').strip("'")
+    if v.startswith("<") or v.startswith("«"):
+        return True
+    return bool(PLACEHOLDER_RE.search(v))
+
+
 def looks_like_secret(value):
+    if looks_like_placeholder(value) or looks_like_regex(value):
+        return False
     if "`" in value:                      # `NAME=` внутри code-span — это имя, не значение
         return False
     v = value.strip().strip("\"'`*,;()[]<>/\\")

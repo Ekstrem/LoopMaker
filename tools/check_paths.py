@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# КОПИЯ из LoopMaker/check_paths.py (источник правды там; правка — в обоих местах).
 """Guard: роль пишет только в свои папки (по loop.config.json).
 
 Роль определяется по префиксу коммита:
@@ -109,6 +110,57 @@ def read_commits(rng):
     return commits
 
 
+
+DIGEST_PATH = "5-tech-backlog/chat/_dialogue.md"
+DIGEST_PREFIX = "chore(chat)"
+
+
+def digest_violations(repo, rng):
+    """Коммиты, которые меняют `_dialogue.md` без признака генерации.
+
+    Правило (@TL 2026-11-11, три случая за сутки): автогенерируемую сводку меняет
+    только генератор, и его коммит начинается с `chore(chat)`. Ручной коммит,
+    задевший файл, — это либо удалённые строки, либо чужая атрибуция.
+
+    Возвращает [(sha, subject)].
+    """
+    out = subprocess.run(["git", "log", "--format=%H%x09%s", "--name-only", rng],
+                         cwd=repo, capture_output=True, text=True,
+                         encoding="utf-8", errors="replace")
+    if out.returncode != 0:
+        return []
+    bad, cur, files = [], None, []
+    for line in out.stdout.splitlines():
+        if "\t" in line and len(line.split("\t")[0]) >= 7 and all(
+                c in "0123456789abcdef" for c in line.split("\t")[0]):
+            if cur and DIGEST_PATH in files and not cur[1].startswith(DIGEST_PREFIX):
+                bad.append(cur)
+            sha, subject = line.split("\t", 1)
+            cur, files = (sha, subject), []
+        elif line.strip():
+            files.append(line.strip())
+    if cur and DIGEST_PATH in files and not cur[1].startswith(DIGEST_PREFIX):
+        bad.append(cur)
+    return bad
+
+
+def digest_selftest():
+    """Проверка правила без git: синтетические пары (subject, files)."""
+    cases = [
+        (("abc1234", "chore(chat): regenerate _dialogue.md [skip ci]"), [DIGEST_PATH], False),
+        (("abc1234", "do: my chat message"), [DIGEST_PATH], True),
+        (("abc1234", "te: tests only"), ["9-tests/x.cs"], False),
+    ]
+    ok = 0
+    for (sha, subject), files, expect in cases:
+        got = DIGEST_PATH in files and not subject.startswith(DIGEST_PREFIX)
+        if got == expect:
+            ok += 1
+        else:
+            print("  [FAIL] %s -> ожидалось %s, получено %s" % (subject[:40], expect, got))
+    print("check_paths --selftest: %d/%d" % (ok, len(cases)))
+    return 0 if ok == len(cases) else 1
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--range", default="HEAD~1..HEAD")
@@ -117,6 +169,7 @@ def main():
     ap.add_argument("--strict", action="store_true",
                     help="только ядро — без папок задач и чата")
     ap.add_argument("--config", default=None)
+    ap.add_argument("--selftest", action="store_true", help="самопроверка правила сводки")
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args()
 
@@ -136,10 +189,23 @@ def main():
         print("%-12s %s" % ("все", ", ".join(cfg.get("shared", []))))
         return 0
 
+    if a.selftest:
+        return digest_selftest()
+
     commits = read_commits(a.range)
     if not commits:
         print("guard: в диапазоне %s нет коммитов" % a.range)
         return 0
+
+    # правило @TL 2026-11-11: `_dialogue.md` меняет только генератор (chore(chat))
+    digest_bad = digest_violations(repo_root(), a.range)
+    if digest_bad:
+        for sha, subject in digest_bad:
+            print("::error::%s меняет %s без признака генерации: «%s» — коммить "
+                  "`python tools/merge_chat.py` отдельно с префиксом `chore(chat)`"
+                  % (sha[:8], DIGEST_PATH, subject[:60]))
+        if not a.report_only:
+            return 1
 
     bad = skipped = checked = 0
     lines = []
