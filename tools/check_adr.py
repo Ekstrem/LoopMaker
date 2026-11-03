@@ -34,7 +34,14 @@ def check_file(path, strict=False):
         errors.append("статус «%s» не из списка: %s" % (m.group(1), ", ".join(STATUSES)))
 
     if not DATE_RE.search(text):
-        errors.append("нет поля «Дата: YYYY-MM-DD»")
+        # Различаем «поля нет» и «поле есть, но не дата»: иначе роль с плейсхолдером
+        # YYYY-MM-DD видит «нет поля», хотя поле есть (нашёл @LM при проверке скелета).
+        m_date = re.search(r"\*\*Дата:\*\*\s*([^\n]*)", text)
+        if m_date:
+            errors.append("поле «Дата» не в формате YYYY-MM-DD (значение: %s)"
+                          % m_date.group(1).strip()[:40])
+        else:
+            errors.append("нет поля «Дата: YYYY-MM-DD»")
 
     for sec in REQUIRED_SECTIONS:
         if sec not in low:
