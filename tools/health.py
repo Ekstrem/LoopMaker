@@ -495,6 +495,7 @@ def main():
     out_file = health.get("file") or "HEALTH.md"
     hist_file = health.get("history") or os.path.join("health", "history.jsonl")
     keep = int(health.get("keep") or 30)
+    arch_dir = health.get("archive") or os.path.join("health", "archive")
 
     errors, warns = metric_lint(root)
     stale, _ = metric_stale(root)
@@ -642,7 +643,14 @@ def main():
         os.makedirs(os.path.dirname(hist_path) or ".", exist_ok=True)
         with open(hist_path, "a", encoding="utf-8", newline="\n") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
-        print("записано: %s, %s" % (out_file, hist_file), file=sys.stderr)
+        # Архив снимка на конец дня/итерации: markdown не затирается, историю видно глазами.
+        # Сырые числа — в history.jsonl, человекочитаемый снимок — в health/archive/HEALTH-<дата>.md.
+        arch_name = "HEALTH-%s.md" % now.strftime("%Y-%m-%d")
+        os.makedirs(os.path.join(root, arch_dir), exist_ok=True)
+        with open(os.path.join(root, arch_dir, arch_name), "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+        print("записано: %s, %s, %s" % (out_file, hist_file, os.path.join(arch_dir, arch_name)),
+              file=sys.stderr)
     return 0
 
 
