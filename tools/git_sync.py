@@ -1,4 +1,3 @@
-# КОПИЯ из LoopMaker/git_sync.py (источник правды там; правка — в обоих местах).
 """Единый безопасный путь синхронизации с origin: wip по зоне → fetch → merge → push.
 
 Транспорт. `origin` здесь ssh (`git@github.com:...`). В песочнице DSH **bundled** ssh
