@@ -175,6 +175,37 @@ def _entropy(s):
     return -sum((c / n) * log2(c / n) for c in Counter(s).values())
 
 
+
+# Дефект гейта 2026-11-10 (@TL 07:11): `base64-long` поймал ЦЕПОЧКУ ИДЕНТИФИКАТОРОВ
+# `AddJwtBearerUseAuthenticationDefaultMapInboundClaims` (латиница, 9 CamelCase-слов,
+# без цифр) как «секрет длиной 55». Это проза, а не ключ: настоящий ключ почти всегда
+# содержит цифры и/или не-словарные фрагменты. Гейт, краснеющий от прозы, обесценивает
+# сигнал не меньше, чем пропущенный ключ.
+IDENTIFIER_WORDS = {
+    "add", "jwt", "bearer", "use", "authentication", "authorization", "default",
+    "map", "inbound", "claims", "token", "tokens", "client", "clients", "server",
+    "service", "services", "request", "response", "header", "headers", "cookie",
+    "cookies", "policy", "policies", "scheme", "schemes", "handler", "handlers",
+    "middleware", "options", "builder", "extensions", "configuration", "settings",
+    "security", "identity", "principal", "context", "database", "migration",
+}
+
+
+def _camel_parts(s):
+    return [p for p in re.split(r"(?<=[a-z0-9])(?=[A-Z])|_+|-+", s) if p]
+
+
+def looks_like_identifier_chain(value):
+    """Цепочка CamelCase-слов без цифр = имя/проза, а не секрет (узко: для shape-правил)."""
+    core = value.strip().strip("\"'`*,;()[]<>/\\")
+    if not core or any(c.isdigit() for c in core):
+        return False
+    parts = _camel_parts(core)
+    if len(parts) < 3:
+        return False
+    return all(p.isalpha() and len(p) >= 3 and p.lower() in IDENTIFIER_WORDS for p in parts)
+
+
 def looks_like_secret(value):
     if "`" in value:                      # `NAME=` внутри code-span — это имя, не значение
         return False
@@ -221,6 +252,8 @@ def scan_text(text, allow_shapes=True):
         if allow_shapes:
             for name, rx in SHAPES:
                 for m in rx.finditer(line):
+                    if looks_like_identifier_chain(m.group(0)):
+                        continue          # цепочка идентификаторов, не ключ (дефект 2026-11-10)
                     if looks_like_secret(m.group(0)):
                         findings.append((name, i, len(m.group(0))))
     return findings
@@ -236,6 +269,30 @@ def changed_files(root, rev_range):
     return [os.path.join(root, n) for n in names if os.path.exists(os.path.join(root, n))]
 
 
+
+def selftest():
+    """Двусторонний контроль гейта (§5.4): дефект ловится, норма — нет."""
+    bad = 0
+
+    code_chain = "AddJwtBearerUseAuthenticationDefaultMapInboundClaimsAndMore"
+    f = scan_text(code_chain)
+    print("  [%s] цепочка идентификаторов -> находок %d (ожидали 0)" % ("OK " if not f else "FAIL", len(f)))
+    bad += 0 if not f else 1
+
+    fake_key = "Xk3Jd9Qz7Lm2Np5Rt8Vw4Yb6Hc1Fg0Ds="
+    f = scan_text("ключ = " + fake_key)
+    print("  [%s] фейковый ключ с цифрами -> находок %d (ожидали >=1)" % ("OK " if f else "FAIL", len(f)))
+    bad += 0 if f else 1
+
+    prose = "Проверяем что middleware подключается корректно и Claims доступны"
+    f = scan_text(prose)
+    print("  [%s] обычная проза -> находок %d" % ("OK " if not f else "FAIL", len(f)))
+    bad += 0 if not f else 1
+
+    print("check_secrets: самопроверка %s" % ("пройдена" if bad == 0 else "ПРОВАЛЕНА"))
+    return 0 if bad == 0 else 1
+
+
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -244,7 +301,10 @@ def main():
     ap.add_argument("--config", default=None)
     ap.add_argument("--range", default=None, help="BASE..HEAD — сканировать только изменённые файлы")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--selftest", action="store_true", help="самопроверка гейта")
     args = ap.parse_args()
+    if getattr(args, "selftest", False):
+        return selftest()
 
     root = repo_root(args.root)
     cfg = load_config(root, args.config)
