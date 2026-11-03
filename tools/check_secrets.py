@@ -329,19 +329,21 @@ def main():
 
     if args.json:
         print(json.dumps({"total": len(results), "findings": results}, ensure_ascii=False, indent=2))
+    elif results:
+        # @TL 11:10: решение принимается по rc, а не по тексту. Поэтому:
+        # 1) явная error-аннотация для CI; 2) находки; 3) ПОСЛЕДНЕЙ строкой —
+        #    «утечек N», чтобы `tail -1` не мог соврать «нет находок».
+        print("::error::утечек секретов: %d — гейт красный" % len(results))
+        for r in results[:40]:
+            print("  %s:%d: %s (значение скрыто, len=%d)"
+                  % (r["file"], r["line"], r["rule"], r["len"]))
+        if len(results) > 40:
+            print("  ... ещё %d" % (len(results) - 40))
+        print("Значение не печатается намеренно. Зачистить строку, затем ротация "
+              "секрета через координатора (из истории git без force-push не убрать).")
+        print("утечек %d" % len(results))
     else:
-        if results:
-            print("утечек секретов: %d" % len(results), file=sys.stderr)
-            for r in results[:40]:
-                print("  %s:%d: %s (значение скрыто, len=%d)"
-                      % (r["file"], r["line"], r["rule"], r["len"]), file=sys.stderr)
-            if len(results) > 40:
-                print("  ... ещё %d" % (len(results) - 40), file=sys.stderr)
-            print("\nЗначение не печатается намеренно. Зачистить строку, затем ротация "
-                  "секрета через координатора (из истории git без force-push не убрать).",
-                  file=sys.stderr)
-        else:
-            print("секретов не найдено (файлов проверено: %d)" % len(files))
+        print("секретов не найдено (файлов проверено: %d)" % len(files))
 
     return 1 if results else 0
 
