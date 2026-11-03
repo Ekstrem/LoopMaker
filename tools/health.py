@@ -478,6 +478,10 @@ def main():
     stale, _ = metric_stale(root)
     gates_ok, gates_total, gates_bad = metric_gates(root)
     p95 = metric_ci(root, cfg, jobs, enabled=not args.no_ci)
+    # metric_ci_reach объявлена выше, но вызова не было -> NameError: name 'reach'
+    # is not defined при рендере таблицы (health.yml). Вызов обязателен до строки,
+    # где печатается «Прогоны, дошедшие до шагов».
+    reach, reach_total, reach_void = metric_ci_reach(root, cfg, enabled=not args.no_ci)
     inbox = metric_inbox(root)
     skew, order = metric_chat_skew(root)
     rev_ok, rev_total, rev_bad = metric_review_domain(root, cfg)
