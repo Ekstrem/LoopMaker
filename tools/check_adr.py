@@ -13,6 +13,7 @@ import argparse
 import datetime
 import os
 import re
+import subprocess
 import sys
 
 STATUSES = ("Предложено", "Принято", "Отклонено", "Заменено")
@@ -70,6 +71,8 @@ def main():
     ap.add_argument("--dir", default=None, help="папка ADL (по умолчанию 04-architecture/ADL)")
     ap.add_argument("--since", default="2026-11-09", help="проверять ADR с этой даты")
     ap.add_argument("--strict", action="store_true", help="предупреждения считать ошибками")
+    ap.add_argument("--range", default=None,
+                    help="git-диапазон (a..b): проверять только изменённые ADR")
     ap.add_argument("--selftest", action="store_true", help="негативный контроль (D-12)")
     args = ap.parse_args()
 
@@ -81,11 +84,31 @@ def main():
         print("check_adr: нет папки %s" % adr_dir)
         return 2
 
+    ranged = None
+    if args.range:
+        out = subprocess.run(["git", "diff", "--name-only", args.range],
+                             capture_output=True, text=True, encoding="utf-8",
+                             errors="replace")
+        if out.returncode != 0:
+            print("check_adr: git diff %s не сработал: %s"
+                  % (args.range, (out.stderr or "").strip()[:120]))
+            return 2
+        wanted = {line.strip().split("/")[-1] for line in out.stdout.splitlines() if line.strip()}
+        ranged = {n for n in wanted
+                  if n.lower().startswith("adr-") and n.lower().endswith(".md")
+                  and "template" not in n.lower()}
+        if not ranged:
+            print("check_adr: в диапазоне %s изменённых ADR нет" % args.range)
+            return 0
+
     since = datetime.date.fromisoformat(args.since)
     checked = skipped = 0
     bad = 0
     for name, path in iter_adrs(adr_dir):
-        m = DATE_RE.search(open(path, encoding="utf-8-sig").read())
+        if ranged is not None and name not in ranged:
+            continue
+        m = None if ranged is not None else DATE_RE.search(
+            open(path, encoding="utf-8-sig").read())
         if m:
             try:
                 if datetime.date.fromisoformat(m.group(1)) < since:
