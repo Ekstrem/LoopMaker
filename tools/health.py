@@ -284,43 +284,65 @@ def metric_cycle(root, cfg):
 def metric_lm_sla(root, cfg):
     """SLA процессной роли: медиана минут от вопроса `→ @LM` до ответа в lm.md.
 
-    Вопрос ищется в любом outbox'е, ответ — строка в lm.md, адресованная автору
-    вопроса, позже вопроса по времени. Медиана по парам; нет пар — n/a.
+    Источник времени — **git committer-time** (стена часов), а не штамп в строке чата.
+    Шкала чата канонически впереди машинных часов (сдвиг `chat_time.shift_hours`),
+    поэтому разность штампов в «минутах чата» не равна минутам ответа: на 2026-11-09
+    она показывала 4605 мин — артефакт, а не регресс (D-13: метрика называет источник).
+
+    `git blame --line-porcelain` даёт committer-time коммита, который внёс каждую
+    строку — это и есть настоящий момент записи. Нет git/блейма — честное n/a.
     """
     backlog = cfg.get("backlog") or "5-backlog"
     chat = os.path.join(root, backlog, "chat")
     if not os.path.isdir(chat):
         return None, 0
-    import statistics
+    Q = re.compile(r"→\s*@lm\b", re.I)
+    R = re.compile(r"→\s*@(\w+)", re.I)
 
-    def parse(name):
-        out = []
-        path = os.path.join(chat, name)
-        if not os.path.exists(path):
-            return out
-        with open(path, encoding="utf-8-sig") as f:
-            for line in f:
-                m = re.match(r"-\s*\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]\s*→\s*@(\w+)", line)
-                if m:
-                    try:
-                        ts = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M")
-                    except ValueError:
-                        continue
-                    out.append((ts, m.group(2).lower(), line.strip()))
-        return out
+    def line_times(path):
+        """[(unixtime, text)] для каждой строки файла; None, если блейм недоступен."""
+        rc, out = sh(root, ["git", "blame", "--line-porcelain", "--", path])
+        if rc != 0 or not out:
+            return None
+        times, cur = [], None
+        for raw in out.splitlines():
+            if raw.startswith("committer-time "):
+                try:
+                    cur = int(raw.split(None, 1)[1])
+                except (IndexError, ValueError):
+                    cur = None
+            elif raw.startswith("\t"):
+                times.append((cur, raw[1:]))
+        return times
 
-    answers = parse("lm.md")
-    pairs = []
+    answers = line_times(os.path.join(chat, "lm.md"))
+    if not answers:
+        return None, 0
+
+    questions = []
     for name in sorted(os.listdir(chat)):
         if not name.endswith(".md") or name in ("README.md", "_dialogue.md", "lm.md", "_lint.md"):
             continue
         author = name[:-3].lower()
-        for ts, target, text in parse(name):
-            if target != "lm":
+        times = line_times(os.path.join(chat, name))
+        if not times:
+            continue
+        for t, text in times:
+            if t is None or not Q.search(text):
                 continue
-            reply = next((a for a in answers if a[0] >= ts and a[1] == author), None)
-            if reply:
-                pairs.append((reply[0] - ts).total_seconds() / 60.0)
+            questions.append((t, author))
+
+    pairs = []
+    for tq, author in questions:
+        best = None
+        for tr, text in answers:
+            if tr is None or tr < tq:
+                continue
+            m = R.search(text)
+            if m and m.group(1).lower() == author:
+                best = tr if best is None else min(best, tr)
+        if best is not None:
+            pairs.append((best - tq) / 60.0)
     if not pairs:
         return None, 0
     return statistics.median(pairs), len(pairs)
@@ -543,8 +565,8 @@ def main():
             gates_ok, gates_total, gates_total, gates_total,
             cell(gates_ok == gates_total)),
         "| Прогоны, дошедшие до шагов | %s | >= 90%% | %s |" % (
-            "n/a" if reach is None else "%d%% из %d (пустых %d)" % (reach, reach_total, reach_void),
-            "🟢" if (reach is None or reach >= 90) else "🟡"),
+            "нет данных" if reach is None else "%d%% из %d (пустых %d)" % (reach, reach_total, reach_void),
+            "⚪ нет данных (нужен PAT @DO)" if reach is None else ("🟢" if reach >= 90 else "🟡")),
         "| CI p95 (худший джоб) | %s | < 300 с | %s |" % (
             "n/a" if p95 is None else "%d с" % p95, "🟢" if (p95 is None or p95 < 300) else "🔴"),
         "| Вопросы в чате без ответа | %s | 0 | %s |" % (
@@ -560,8 +582,8 @@ def main():
                 cycle_med, cycle_n, "" if not cycle_missing else ", без дат %d" % cycle_missing),
             "🟢" if (cycle_med is not None and cycle_med < 7) else "🟡"),
         "| Ответ @LM, медиана (мин) | %s | < 30 | %s |" % (
-            "n/a" if lm_med is None else "%.0f (n=%d)" % (lm_med, lm_n),
-            "🟢" if (lm_med is not None and lm_med < 30) else "🟡"),
+            "нет данных" if lm_med is None else "%.0f (n=%d)" % (lm_med, lm_n),
+            "⚪ нет данных" if lm_med is None else ("🟢" if lm_med < 30 else "🟡")),
         "| Формат чата не каноном | %s | < 10%% | %s |" % (
             "n/a" if not fmt_total else "%d из %d" % (fmt_tol, fmt_total),
             "🟢" if (not fmt_total or 100.0 * fmt_tol / fmt_total < 10) else "🟡"),

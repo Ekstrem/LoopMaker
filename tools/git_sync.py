@@ -1,5 +1,5 @@
 # КОПИЯ из LoopMaker/git_sync.py (источник правды там; правка — в обоих местах).
-"""Единый безопасный путь синхронизации с origin: wip по зоне → fetch → rebase → push.
+"""Единый безопасный путь синхронизации с origin: wip по зоне → fetch → merge → push.
 
 Транспорт. `origin` здесь ssh (`git@github.com:...`). В песочнице DSH **bundled** ssh
 из `C:\\Program Files\\Git\\usr\\bin` падает с `couldn't create signal pipe, Win32 error 5`,
@@ -140,7 +140,7 @@ def drop_lock(git_dir):
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
-    ap = argparse.ArgumentParser(description="wip + fetch + rebase + push одной командой")
+    ap = argparse.ArgumentParser(description="wip + fetch + merge + push одной командой")
     ap.add_argument("--role", required=True)
     ap.add_argument("--paths", default=None, help="пути для wip (по умолчанию — зона роли)")
     ap.add_argument("--all", action="store_true", help="wip всего дерева (исключение)")
@@ -172,7 +172,7 @@ def main():
     if dirty:
         steps.append("wip.py --role %s%s" % (args.role, " --all" if args.all else ""))
     steps += ["git fetch %s" % args.remote,
-              "git rebase --autostash %s/%s" % (args.remote, args.branch),
+              "git merge --no-edit %s/%s" % (args.remote, args.branch),
               "git push %s %s" % (args.remote, args.branch)]
 
     say("git_sync: шаги")
@@ -307,11 +307,12 @@ def main():
     if fetched.returncode != 0:
         sys.exit("git_sync: fetch не прошёл: %s" % (fetched.stderr or "").strip()[-300:])
 
-    rebase = git("rebase", "--autostash", "%s/%s" % (args.remote, args.branch), check=False)
-    if rebase.returncode != 0:
-        say((rebase.stderr or "").strip()[:600])
-        sys.exit("git_sync: rebase не прошёл — разбирай вручную (§5.3: STOP при потере)")
-    say("git_sync: rebase ok")
+    merged = git("merge", "--no-edit", "%s/%s" % (args.remote, args.branch), check=False)
+    if merged.returncode != 0:
+        say((merged.stderr or "").strip()[:600])
+        sys.exit("git_sync: merge не прошёл — конфликт или дерево грязное; разбирай вручную "
+                 "(§5.3: STOP только при потере/повреждении)")
+    say("git_sync: merge ok")
 
     ahead = git("rev-list", "--count", "%s/%s..HEAD" % (args.remote, args.branch)).stdout.strip()
     if ahead == "0":
