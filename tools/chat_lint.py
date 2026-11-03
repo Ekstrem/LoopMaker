@@ -116,6 +116,8 @@ def scan(chat_dir, known_roles):
     return problems
 
 
+ORDER_CUTOFF = datetime.datetime(2026, 11, 10, 0, 0)
+
 TS_CANON = re.compile(r"^-\s*\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]")
 
 
@@ -282,7 +284,7 @@ def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0, use
         пишут в своей зоне, и если опора смотрит только в проверяемую зону,
         любая свежая метка выглядит «впереди» на дни.
     """
-    future, order = [], []
+    future, order, grandfathered = [], [], []
     collected = []
     global_max = {}
     for name in sorted(os.listdir(chat_dir)):
@@ -312,7 +314,13 @@ def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0, use
                 if not new_scale:
                     continue
                 if prev is not None and ts < prev:
-                    order.append((name, raw, prev.strftime("%Y-%m-%d %H:%M")))
+                    # Решение @TL 2026-11-11: историю НЕ переписываем. Строки ДО ORDER_CUTOFF —
+                    # grandfathered: печатаются как след, но rc не красят. После cutoff — проверяются.
+                    item = (name, raw, prev.strftime("%Y-%m-%d %H:%M"))
+                    if ts >= ORDER_CUTOFF and prev >= ORDER_CUTOFF:
+                        order.append(item)
+                    else:
+                        grandfathered.append(item)
                 prev = ts
                 collected.append((name, raw, ts))
 
@@ -327,7 +335,48 @@ def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0, use
         if ts > reference + datetime.timedelta(minutes=tolerance_min):
             lag = ts - reference
             future.append((name, raw, int(lag.total_seconds() // 3600)))
-    return future, order
+    return future, order, grandfathered
+
+def scan_invalid_times(chat_dir, known_roles, since=None):
+    """Метки с невозможным временем (час > 23, минута > 59).
+
+    Почему отдельно от scan_times: `strptime("%H:%M")` на `25:30` бросает ValueError,
+    а scan_times такие строки молча пропускает — гейт их не видел вообще.
+
+    Грандфазеринг (@LM 2026-11-11): метка с датой РАНЬШЕ порога — [grandfathered]
+    (печатается, rc не красит); с датой порога и позже — ошибка.
+
+    Возвращает (errors, grandfathered) — списки [(файл, метка)].
+    """
+    errors, grand = [], []
+    stamp = re.compile(r"^-\s*\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})\]")
+    cutoff_date = (since or ORDER_CUTOFF).date()
+    for name in sorted(os.listdir(chat_dir)):
+        if not name.endswith(".md") or name.lower() in SKIP:
+            continue
+        if name[:-3].lower() not in known_roles:
+            continue
+        with open(os.path.join(chat_dir, name), encoding="utf-8-sig") as handle:
+            for line in handle:
+                m = stamp.match(line.strip())
+                if not m:
+                    continue
+                year, month, day, hour, minute = (int(x) for x in m.groups())
+                invalid = hour > 23 or minute > 59 or month > 12 or month < 1 or day > 31 or day < 1
+                if not invalid:
+                    continue
+                try:
+                    date = datetime.date(year, month if 1 <= month <= 12 else 1,
+                                         day if 1 <= day <= 31 else 1)
+                except ValueError:
+                    date = datetime.date(year, 1, 1)
+                item = (name, m.group(0)[3:-1])
+                if date < cutoff_date:
+                    grand.append(item)
+                else:
+                    errors.append(item)
+    return errors, grand
+
 
 def notice(role, titles, line, now):
     author = titles.get(role, role.upper())
@@ -440,8 +489,14 @@ def main():
     # «будущим». Вне CI (машина в TZ проекта) остаётся сравнение с текущим временем —
     # там оно осмысленно и ловит метку, уехавшую вперёд по ошибке.
     # Шкала чата — канон и локально, и в CI: сравниваем с максимумом по чату и по часам.
-    future, order = scan_times(chat_dir, set(titles.keys()), now_project, tolerance, shift,
-                               use_clock=False)
+    _since_raw = getattr(args, "since", None) or "2026-11-10T00:00"
+    try:
+        order_since = datetime.datetime.strptime(_since_raw, "%Y-%m-%dT%H:%M")
+    except ValueError:
+        order_since = ORDER_CUTOFF
+    invalid, invalid_grand = scan_invalid_times(chat_dir, set(titles.keys()), order_since)
+    future, order, grandfathered = scan_times(chat_dir, set(titles.keys()), now_project,
+                                               tolerance, shift, use_clock=False)
 
     if args.report or args.check:
         print("нераспознанных строк: %d (новых: %d)" % (len(problems), len(fresh)))
@@ -462,7 +517,22 @@ def main():
                 print("  %s: %s — на %d ч впереди шкалы" % (name, raw, days))
             for name, raw, prev in order[:5]:
                 print("  %s: %s после %s — порядок нарушен" % (name, raw, prev))
-        bad = problems or ((future or order) and args.strict_times)
+        if grandfathered:
+            print("метки времени: [grandfathered] %d нарушений порядка ДО %s — как след, rc не красят"
+                  % (len(grandfathered), ORDER_CUTOFF.strftime("%Y-%m-%dT%H:%M")))
+            for name, raw, prev in grandfathered[:5]:
+                print("  [grandfathered] %s: %s после %s" % (name, raw, prev))
+        if invalid:
+            print("невалидное время: %d (час/минута вне диапазона) — это ошибка, не предупреждение"
+                  % len(invalid))
+            for name, raw in invalid[:10]:
+                print("  %s: [%s] — час 0–23, минута 0–59" % (name, raw))
+        if invalid_grand:
+            print("невалидное время: [grandfathered] %d меток ДО порога — печатаются как след,"
+                  " rc не красят (@LM 2026-11-11)" % len(invalid_grand))
+            for name, raw in invalid_grand[:5]:
+                print("  [grandfathered] %s: [%s]" % (name, raw))
+        bad = problems or bool(invalid) or ((future or order) and args.strict_times)
         return 1 if bad and args.check else 0
 
     if not fresh:

@@ -24,6 +24,8 @@
 import argparse
 import json
 import os
+import subprocess
+import datetime
 import re
 import sys
 
@@ -143,6 +145,23 @@ def task_files(root, cfg):
     return out
 
 
+def last_commit_ts(root, rel):
+    """Время последнего коммита файла (unix ts) или None, если git не ответил.
+
+    Нужно для грандфазеринга (@LM 2026-11-11): правило «статус без пояснения»
+    проверяем только для карточек, изменённых ПОСЛЕ порога; старые — [grandfathered].
+    """
+    try:
+        out = subprocess.run(["git", "log", "-1", "--format=%ct", "--", rel],
+                             cwd=root, capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=20)
+        if out.returncode == 0 and out.stdout.strip():
+            return int(out.stdout.strip())
+    except Exception:
+        pass
+    return None
+
+
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -153,6 +172,8 @@ def main():
     ap.add_argument("--report", action="store_true", help="только отчёт, код 0")
     ap.add_argument("--strict", action="store_true", help="предупреждения тоже валят (после бэкфилла)")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--since", default="2026-11-10T00:00",
+                    help="порог грандфазеринга (ISO): карточки, изменённые раньше, не валят гейт")
     args = ap.parse_args()
 
     root = repo_root(args.root)
@@ -162,7 +183,13 @@ def main():
     rules = dict(DEFAULT_RULES)
     rules.update(cfg.get("status_rules") or {})
 
+    try:
+        since_ts = datetime.datetime.strptime(args.since, "%Y-%m-%dT%H:%M").timestamp()
+    except ValueError:
+        since_ts = datetime.datetime(2026, 11, 10, 0, 0).timestamp()
+
     problems = []
+    grandfathered = []
     for path in task_files(root, cfg):
         rel = os.path.relpath(path, root).replace("\\", "/")
         with open(path, encoding="utf-8-sig") as f:
@@ -183,9 +210,17 @@ def main():
         # D-11: пояснение в поле статуса — неявный контракт (stats нормализует по подстроке).
         # Ловим явно, чтобы «Закрыта (по решению владельца)» не уехала в чужую колонку молча.
         if "(" in raw or ")" in raw:
-            problems.append({"file": rel, "status": value, "level": "warn",
-                             "problem": "статус с пояснением «%s» — канон: статус без скобок, "
-                                        "пояснение в «## Результат»" % raw[raw.find("("):]})
+            item = {"file": rel, "status": value, "level": "warn",
+                    "problem": "статус с пояснением «%s» — канон: статус без скобок, "
+                               "пояснение в «## Результат»" % raw[raw.find("("):]}
+            # @LM 2026-11-11: историю не переписываем. Карточки, последний коммит которых
+            # раньше порога (--since, по умолчанию 2026-11-10T00:00), — [grandfathered]:
+            # печатаются как след, rc не красят.
+            ts = last_commit_ts(root, rel)
+            if ts is not None and ts < since_ts:
+                grandfathered.append(item)
+            else:
+                problems.append(item)
         for field in rules.get(value, []):
             got = field_value(text, field)
             if len(got) < 5:
@@ -198,6 +233,12 @@ def main():
             problems.append({"file": rel, "status": value, "level": "warn",
                              "problem": "саморевью: автор @%s и `Проверяет: @%s` (§2.1 п.6)"
                                         % (author.upper(), got.upper())})
+
+    if grandfathered and not args.json:
+        print("[grandfathered] %d предупреждений в карточках, изменённых ДО порога —"
+              " не красят гейт (@LM 2026-11-11)" % len(grandfathered))
+        for p in grandfathered[:5]:
+            print("  [grandfathered] %s: %s" % (p["file"], p["problem"][:90]))
 
     errors = [p for p in problems if p["level"] == "error"]
     warns = [p for p in problems if p["level"] == "warn"]
