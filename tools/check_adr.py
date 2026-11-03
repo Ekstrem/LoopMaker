@@ -156,22 +156,34 @@ def main():
             return 0
 
     since = datetime.date.fromisoformat(args.since)
-    checked = skipped = 0
+    checked = skipped = downgraded = 0
     bad = 0
     for name, path in iter_adrs(adr_dir):
         if ranged is not None and name not in ranged:
             continue
-        m = None if ranged is not None else DATE_RE.search(
-            open(path, encoding="utf-8-sig").read())
-        if m:
+        d = None
+        dm = DATE_RE.search(open(path, encoding="utf-8-sig").read())
+        if dm:
             try:
-                if datetime.date.fromisoformat(m.group(1)) < since:
-                    skipped += 1
-                    continue
+                d = datetime.date.fromisoformat(dm.group(1))
             except ValueError:
-                pass
+                d = None
+        is_old = d is not None and d < since
+        if ranged is None and is_old:
+            skipped += 1
+            continue
         checked += 1
         errors, warnings = check_file(path, args.strict)
+        if is_old and errors:
+            # Грандфазеринг по дате: правка старого ADR не должна красить гейт.
+            # Иначе «исправить одну ссылку в ADR-008» требует переписать весь документ
+            # (стимул не трогать доки — класс «доки расходятся с кодом»). @TL 08:41, вариант (б).
+            warnings = warnings + [
+                "старый ADR (до %s): ошибки понижены до предупреждений — "
+                "полный шаблон нужен только при содержательном переписывании"
+                % args.since] + errors
+            errors = []
+            downgraded += 1
         if errors or (args.strict and warnings):
             bad += 1
             print("✗ %s" % name)
@@ -182,8 +194,8 @@ def main():
         elif warnings:
             print("⚠ %s: %s" % (name, "; ".join(warnings)))
 
-    print("check_adr: проверено %d (после %s), старых пропущено %d, нарушений %d"
-          % (checked, args.since, skipped, bad))
+    print("check_adr: проверено %d (старых пропущено %d, старых с понижением %d), нарушений %d"
+          % (checked, skipped, downgraded, bad))
     return 1 if bad else 0
 
 
