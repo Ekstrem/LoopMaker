@@ -45,3 +45,4 @@
 | [D-15](D-15-swallowed-errors.md) | любое `|| true` в деплое/гейте — дефект + пост-проверка digest (приоритет №1) | черновик | @DO, @TL |
 | [D-16](D-16-owner-line-in-origin.md) | строка владельца обязана оказаться в `origin` (запись в файл ≠ запись в git) | черновик | @LM, @DO, владелец |
 | [D-17](D-17-adr-process.md) | ADR: шаблон + процесс (3 варианта, протокол по ролям, комплаенс) — что внести в AGENTS | черновик; шаблон уже в `templates/adr.md` | @AR, @LM, @TL |
+| [D-19](D-19-contracts-apim.md) | контракт в APIM: repo → APIM (или экспорт в git + drift-check) | черновик | @AR, @DO, @BE |
