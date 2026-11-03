@@ -142,7 +142,7 @@ def cmd_report(root_dir, upstream_dir):
     return 0
 
 
-def cmd_pull(root_dir, upstream_dir, only=None, names=None):
+def cmd_pull(root_dir, upstream_dir, only=None, names=None, force=False):
     data = load_manifest(root_dir)
     tools = data.get("tools") or {}
     if names:
@@ -150,6 +150,25 @@ def cmd_pull(root_dir, upstream_dir, only=None, names=None):
             tools.setdefault(n, {})
         data["tools"] = tools
     todo = [only] if only else (names or sorted(tools))
+
+    # guard (D-10): --pull молча затирает локальные правки, если их не перенесли в источник.
+    # Отказываем, если копия правлена после последней синхронизации (хеш ≠ манифест),
+    # и это не новый инструмент без записи в манифесте.
+    dirty = []
+    for name in todo:
+        path = local_path(root_dir, name)
+        meta = tools.get(name) or {}
+        if os.path.exists(path) and meta.get("sha256") and digest(read(path)) != meta["sha256"]:
+            dirty.append(name)
+    if dirty and not force:
+        print("sync_tools: локальные правки не выгружены (%d) — pull отказался:" % len(dirty))
+        for n in dirty:
+            print("  - %s: правлен без sync" % n)
+        print("")
+        print("Перенеси правку в источник (LoopMaker), затем повтори pull;")
+        print("или осознанно затёрть копию источником: python tools/sync_tools.py --pull --force")
+        return 1
+
     changed = 0
     for name in todo:
         up = upstream_path(upstream_dir, name)
@@ -196,6 +215,8 @@ def main():
     ap.add_argument("--check", action="store_true", help="CI: копии совпадают с манифестом")
     ap.add_argument("--report", action="store_true", help="сравнить с локальным LoopMaker")
     ap.add_argument("--pull", action="store_true", help="скопировать из LoopMaker")
+    ap.add_argument("--force", action="store_true",
+                    help="с --pull: затереть локальные правки копии источником (осознанно)")
     ap.add_argument("--seed", action="store_true", help="зафиксировать текущее состояние в манифест")
     ap.add_argument("--add", default=None, help="добавить инструмент в манифест")
     ap.add_argument("--names", default=None, help="список через запятую: какие инструменты брать")
@@ -211,9 +232,9 @@ def main():
         return cmd_seed(root_dir, names or [n for n in sorted(os.listdir(os.path.join(root_dir, "tools")))
                                            if n.endswith(".py")])
     if args.pull:
-        return cmd_pull(root_dir, upstream, args.add, names or None)
+        return cmd_pull(root_dir, upstream, args.add, names or None, force=args.force)
     if args.add:
-        return cmd_pull(root_dir, upstream, args.add)
+        return cmd_pull(root_dir, upstream, args.add, force=args.force)
     return cmd_report(root_dir, upstream)
 
 
