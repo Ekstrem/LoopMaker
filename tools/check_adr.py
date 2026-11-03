@@ -22,6 +22,44 @@ DATE_RE = re.compile(r"\*\*Дата:\*\*\s*(\d{4}-\d{2}-\d{2})")
 STATUS_RE = re.compile(r"\*\*Статус:\*\*\s*([А-Яа-яA-Za-z]+)")
 
 
+PLUS_RE = re.compile(r"[-|]\s*\**(Плюсы|Минусы)", re.I)
+
+
+def count_items(text, label):
+    """Сколько пунктов в блоке «Плюсы/Минусы» (bullets или через `;`)."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if not re.search(label, line, re.I):
+            continue
+        # табличный вариант: | Плюсы | a; b; c |
+        if "|" in line:
+            cells = [c.strip() for c in line.split("|") if c.strip()]
+            body = cells[-1] if cells else ""
+            body = re.sub(r"^\**%s[^:]*:\**" % label, "", body, flags=re.I)
+            items = [x for x in re.split(r"[;]", body) if x.strip()]
+            if len(items) > 1:
+                return len(items)
+            return len([x for x in body.split(",") if x.strip()])
+        # bullet-вариант: пункты могут быть и в этой же строке через «;», и списком ниже
+        inline = re.sub(r"^[-|]\s*\**%s[^:]*:\**" % label, "", line, flags=re.I).strip()
+        if inline:
+            parts = [x for x in re.split(r"[;]", inline) if x.strip()]
+            if len(parts) > 1:
+                return len(parts)
+            count = 1 if parts else 0
+        else:
+            count = 0
+        for nxt in lines[i + 1:]:
+            s = nxt.strip()
+            if not s:
+                continue
+            if s.startswith(("- ", "* ")) and not re.search(r"\*\*(Плюсы|Минусы|Описание|Соответствие)", s):
+                count += 1
+                continue
+            break
+        return count
+    return 0
+
 def check_file(path, strict=False):
     errors, warnings = [], []
     text = open(path, encoding="utf-8-sig").read()
@@ -38,10 +76,10 @@ def check_file(path, strict=False):
         # YYYY-MM-DD видит «нет поля», хотя поле есть (нашёл @LM при проверке скелета).
         m_date = re.search(r"\*\*Дата:\*\*\s*([^\n]*)", text)
         if m_date:
-            errors.append("поле «Дата» не в формате YYYY-MM-DD (значение: %s)"
+            errors.append("поле «Дата» не в формате YYYY-MM-DD (значение: %s) — подставь реальную дату, например 2026-11-09, а не плейсхолдер из шаблона"
                           % m_date.group(1).strip()[:40])
         else:
-            errors.append("нет поля «Дата: YYYY-MM-DD»")
+            errors.append("нет поля «Дата: YYYY-MM-DD» — добавь строку `- **Дата:** 2026-11-09` (это поле обязательно, плейсхолдер не считается)")
 
     for sec in REQUIRED_SECTIONS:
         if sec not in low:
@@ -55,6 +93,15 @@ def check_file(path, strict=False):
         errors.append("нет протокола по ролям (столбцы «Принял»/«Отклонил»)")
     if "комплаенс" not in low:
         errors.append("нет раздела «Комплаенс» (условия пересмотра, кто проверяет)")
+
+    # «Плюсы/Минусы» исчерпывающие: один пункт — предупреждение, не ошибка (@TL 02:11).
+    blocks = re.split(r"(?im)^###\s+вариант", text)[1:]
+    for idx, block in enumerate(blocks, 1):
+        for label in ("Плюсы", "Минусы"):
+            n = count_items(block, label)
+            if n and n < 2:
+                warnings.append("вариант %d: «%s» — %d пункт(а), нужен исчерпывающий список"
+                                % (idx, label, n))
 
     if strict:
         if "заменяет" not in low:
