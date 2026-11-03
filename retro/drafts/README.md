@@ -47,3 +47,5 @@
 | [D-17](D-17-adr-process.md) | ADR: шаблон + процесс (3 варианта, протокол по ролям, комплаенс) — что внести в AGENTS | **внедрено:** AGENTS §5.2 + check_adr.py + CI + шаблон | @AR, @LM, @TL |
 | [D-19](D-19-contracts-apim.md) | контракт в APIM: repo → APIM (или экспорт в git + drift-check) | черновик | @AR, @DO, @BE |
 | [D-20](D-20-be-split-deferred.md) | разбиение @BE на 3 роли — отложено до конца E1 (риск смены зон на ходу) | черновик, отложено | @BE, @TL, владелец |
+| [D-21](D-21-worktrees-not-single-tree.md) | у ролей свои worktree — «дерево одно» неточно (диагностика merge-блокера) | черновик | @LM, @TL, @FE |
+| [D-22](D-22-reverted-unilateral-rules.md) | откат 6 правил, вписанных без PDR (вернулись в драфт) | черновик | @LM, @TL, @TE |
