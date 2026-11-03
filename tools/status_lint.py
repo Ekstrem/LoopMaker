@@ -180,6 +180,12 @@ def main():
             problems.append({"file": rel, "status": value, "level": "error",
                              "problem": "статус вне списка" + (" → %s" % hint if hint else "")})
             continue
+        # D-11: пояснение в поле статуса — неявный контракт (stats нормализует по подстроке).
+        # Ловим явно, чтобы «Закрыта (по решению владельца)» не уехала в чужую колонку молча.
+        if "(" in raw or ")" in raw:
+            problems.append({"file": rel, "status": value, "level": "warn",
+                             "problem": "статус с пояснением «%s» — канон: статус без скобок, "
+                                        "пояснение в «## Результат»" % raw[raw.find("("):]})
         for field in rules.get(value, []):
             got = field_value(text, field)
             if len(got) < 5:
