@@ -118,6 +118,21 @@ def iter_adrs(adr_dir):
             yield name, os.path.join(adr_dir, name)
 
 
+def file_creation_epoch(path):
+    """Время первого добавления файла в git (committer-time), None если не git/нет.
+
+    Это и есть ответ на «создан ли ADR после шаблона» (@AR 08:42, вариант 3):
+    `git log --diff-filter=A` даёт дату создания, а не «дату последней правки» и не
+    поле `**Дата:**` (которое можно сдвинуть при правке старого ADR).
+    """
+    out = subprocess.run(["git", "log", "--diff-filter=A", "--format=%ct", "--", path],
+                         capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if out.returncode != 0:
+        return None
+    times = [int(x) for x in out.stdout.split() if x.strip().lstrip("-").isdigit()]
+    return times[-1] if times else None
+
+
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -161,25 +176,28 @@ def main():
     for name, path in iter_adrs(adr_dir):
         if ranged is not None and name not in ranged:
             continue
-        d = None
-        dm = DATE_RE.search(open(path, encoding="utf-8-sig").read())
-        if dm:
+        # «новый vs старый» — по дате создания файла в git (вариант @AR), фолбэк — поле «Дата».
+        created = file_creation_epoch(path)
+        if created is not None:
+            is_old = datetime.datetime.fromtimestamp(
+                created, datetime.timezone.utc).date() < since
+        else:
+            dm = DATE_RE.search(open(path, encoding="utf-8-sig").read())
             try:
-                d = datetime.date.fromisoformat(dm.group(1))
+                is_old = dm and datetime.date.fromisoformat(dm.group(1)) < since
             except ValueError:
-                d = None
-        is_old = d is not None and d < since
+                is_old = False
         if ranged is None and is_old:
             skipped += 1
             continue
         checked += 1
         errors, warnings = check_file(path, args.strict)
         if is_old and errors:
-            # Грандфазеринг по дате: правка старого ADR не должна красить гейт.
+            # Грандфазеринг по дате создания: правка старого ADR не должна красить гейт.
             # Иначе «исправить одну ссылку в ADR-008» требует переписать весь документ
-            # (стимул не трогать доки — класс «доки расходятся с кодом»). @TL 08:41, вариант (б).
+            # (стимул не трогать доки — класс «доки расходятся с кодом»). @TL 08:41 (б) + @AR 08:42 (по дате создания).
             warnings = warnings + [
-                "старый ADR (до %s): ошибки понижены до предупреждений — "
+                "старый ADR (создан до %s): ошибки понижены до предупреждений — "
                 "полный шаблон нужен только при содержательном переписывании"
                 % args.since] + errors
             errors = []
