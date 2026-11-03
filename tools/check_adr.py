@@ -4,8 +4,12 @@
 Зачем: шаблон ADR есть, но «написали по шаблону» проверяется только глазами. Этот гейт
 ловит новые ADR без обязательных разделов: варианты (>=3), протокол по ролям, комплаенс.
 
-Проверяются ТОЛЬКО новые ADR (дата >= --since). Старые не трогаем: 24 ADR писались до
-шаблона, и красить их — значит сделать гейт вечно красным (дефект гейта, §5.4).
+Критерий «новый/старый» ОДИН — дата создания файла в git (`git log --diff-filter=AR`,
+а не поле «Дата»: его можно сдвинуть при правке). ADR, созданный раньше `--cutoff`
+(по умолчанию 2026-11-08), при правке даёт предупреждения, а не ошибки — иначе правка
+одной ссылки в старом ADR требовала бы переписать весь документ (дефект гейта, §5.4).
+`--since` — алиас для совместимости с документацией, но значение МЕНЬШЕ нормы не
+принимается: иначе «новыми» станут все 23 старых ADR и гейт покраснеет на истории.
 
 КОПИЯ в проекте: источник правды — LoopMaker/tools/check_adr.py.
 """
@@ -118,19 +122,70 @@ def iter_adrs(adr_dir):
             yield name, os.path.join(adr_dir, name)
 
 
-def file_creation_epoch(path):
-    """Время первого добавления файла в git (committer-time), None если не git/нет.
+CUTOFF_DEFAULT = "2026-11-08"   # ADR, созданные раньше, грандфазерятся (warning, не error)
 
-    Это и есть ответ на «создан ли ADR после шаблона» (@AR 08:42, вариант 3):
-    `git log --diff-filter=A` даёт дату создания, а не «дату последней правки» и не
-    поле `**Дата:**` (которое можно сдвинуть при правке старого ADR).
+
+def parse_creation_log(text):
+    """Разбор `git log --diff-filter=AR --name-status --format=@@%ct`.
+
+    Возвращает путь → epoch ПЕРВОГО появления (A — добавлен, R — переименован).
+    Для R в name-status две строки-пути (старый и новый) — учитываем оба, иначе
+    переименованный старый ADR считался бы новым и молча получал error (@AR 09:26 п.3).
     """
-    out = subprocess.run(["git", "log", "--diff-filter=A", "--format=%ct", "--", path],
+    m = {}
+    ts = None
+    for line in text.splitlines():
+        if line.startswith("@@"):
+            ts = int(line[2:].strip() or 0)
+            continue
+        if not line.strip() or ts is None:
+            continue
+        parts = line.split("\t")
+        for p in parts[1:]:
+            if p.endswith(".md"):
+                m[p] = min(m.get(p, ts), ts)
+    return m
+
+
+def creation_map(adr_dir):
+    """ОДИН git-вызов на весь каталог (кэш), а не O(N) вызовов в цикле (@AR 09:26 п.1)."""
+    out = subprocess.run(["git", "log", "--diff-filter=AR", "--name-status",
+                          "--format=@@%ct", "--", adr_dir],
                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     if out.returncode != 0:
+        return {}
+    return parse_creation_log(out.stdout)
+
+
+def created_date(path, cmap):
+    """Дата создания: сначала пакетная карта, потом одиночный git, потом поле «Дата»."""
+    rel = path.replace(os.sep, "/")
+    epoch = cmap.get(rel)
+    if epoch is None:
+        out = subprocess.run(["git", "log", "--diff-filter=A", "--format=%ct", "--", path],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace")
+        times = [int(x) for x in (out.stdout or "").split() if x.strip().isdigit()]
+        epoch = times[-1] if times else None
+    if epoch is not None:
+        return datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc).date()
+    dm = DATE_RE.search(open(path, encoding="utf-8-sig").read())
+    try:
+        return datetime.date.fromisoformat(dm.group(1)) if dm else None
+    except ValueError:
         return None
-    times = [int(x) for x in out.stdout.split() if x.strip().lstrip("-").isdigit()]
-    return times[-1] if times else None
+
+
+def downgrade_note(cutoff):
+    """Текст «ошибки понижены». Вынесен и защищён от None (@TL 11:05).
+
+    Пока строка формировалась инлайн с `args.cutoff`, при default=None в сообщении
+    печаталось «создан до None» — гейт работал, а текст врал. Теперь None невозможен:
+    функция падает, а `--selftest` проверяет сам ТЕКСТ, а не только rc.
+    """
+    if cutoff is None:
+        raise ValueError("cutoff не задан — сообщение напечатало бы None")
+    return ("старый ADR (создан до %s): ошибки понижены до предупреждений — "
+            "полный шаблон нужен только при содержательном переписывании" % cutoff)
 
 
 def main():
@@ -138,7 +193,12 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="Гейт формата ADR")
     ap.add_argument("--dir", default=None, help="папка ADL (по умолчанию 04-architecture/ADL)")
-    ap.add_argument("--since", default="2026-11-09", help="проверять ADR с этой даты")
+    ap.add_argument("--cutoff", default=None,
+                    help="порог: ADR, созданные раньше, грандфазерятся (warning). "
+                         "По умолчанию %s" % CUTOFF_DEFAULT)
+    ap.add_argument("--since", default=None,
+                    help="алиас --cutoff для совместимости (AGENTS §5.2); значение меньше "
+                         "нормы %s не принимается" % CUTOFF_DEFAULT)
     ap.add_argument("--strict", action="store_true", help="предупреждения считать ошибками")
     ap.add_argument("--range", default=None,
                     help="git-диапазон (a..b): проверять только изменённые ADR")
@@ -170,23 +230,28 @@ def main():
             print("check_adr: в диапазоне %s изменённых ADR нет" % args.range)
             return 0
 
-    since = datetime.date.fromisoformat(args.since)
+    norm = datetime.date.fromisoformat(CUTOFF_DEFAULT)
+    if args.cutoff:
+        cutoff = datetime.date.fromisoformat(args.cutoff)
+    elif args.since:
+        cutoff = datetime.date.fromisoformat(args.since)
+        if cutoff < norm:
+            print("check_adr: --since %s раньше нормы %s — тогда «новыми» станут все старые "
+                  "ADR и гейт покраснеет на истории (это дефект гейта, §5.4). "
+                  "Если действительно нужен строгий прогон — используй --cutoff %s"
+                  % (cutoff, norm, cutoff))
+            return 2
+    else:
+        cutoff = norm
+    cmap = creation_map(adr_dir)
     checked = skipped = downgraded = 0
     bad = 0
     for name, path in iter_adrs(adr_dir):
         if ranged is not None and name not in ranged:
             continue
-        # «новый vs старый» — по дате создания файла в git (вариант @AR), фолбэк — поле «Дата».
-        created = file_creation_epoch(path)
-        if created is not None:
-            is_old = datetime.datetime.fromtimestamp(
-                created, datetime.timezone.utc).date() < since
-        else:
-            dm = DATE_RE.search(open(path, encoding="utf-8-sig").read())
-            try:
-                is_old = dm and datetime.date.fromisoformat(dm.group(1)) < since
-            except ValueError:
-                is_old = False
+        # «новый vs старый» — ТОЛЬКО дата создания в git (кэш), фолбэк — поле «Дата».
+        created = created_date(path, cmap)
+        is_old = created is not None and created < cutoff
         if ranged is None and is_old:
             skipped += 1
             continue
@@ -196,10 +261,7 @@ def main():
             # Грандфазеринг по дате создания: правка старого ADR не должна красить гейт.
             # Иначе «исправить одну ссылку в ADR-008» требует переписать весь документ
             # (стимул не трогать доки — класс «доки расходятся с кодом»). @TL 08:41 (б) + @AR 08:42 (по дате создания).
-            warnings = warnings + [
-                "старый ADR (создан до %s): ошибки понижены до предупреждений — "
-                "полный шаблон нужен только при содержательном переписывании"
-                % args.since] + errors
+            warnings = warnings + [downgrade_note(cutoff)] + errors
             errors = []
             downgraded += 1
         if errors or (args.strict and warnings):
@@ -281,6 +343,25 @@ def selftest():
         print("  [%s] старые пропущены -> rc=%d" % ("OK " if rc == 0 else "FAIL", rc))
         ok = ok and rc == 0
     shutil.rmtree(tmp, ignore_errors=True)
+
+    # Текст сообщения — отдельная проверка (@TL 11:05): гейт может быть прав, а ТЕКСТ врать.
+    # Раньше здесь печаталось «создан до None» при default --cutoff.
+    try:
+        note = downgrade_note(datetime.date(2026, 11, 8))
+        ok_text = ("2026-11-08" in note) and ("None" not in note)
+    except Exception as exc:  # noqa: BLE001
+        ok_text = False
+        note = "исключение: %s" % exc
+    print("  [%s] текст понижения: %r" % ("OK " if ok_text else "FAIL", note[:70]))
+    ok = ok and ok_text
+
+    try:
+        downgrade_note(None)
+        print("  [FAIL] downgrade_note(None) не упал — снова напечатали бы None")
+        ok = False
+    except ValueError:
+        print("  [OK ] downgrade_note(None) -> ValueError (None напечатать нельзя)")
+
     print("check_adr: самопроверка %s" % ("пройдена" if ok else "ПРОВАЛЕНА"))
     return 0 if ok else 1
 
