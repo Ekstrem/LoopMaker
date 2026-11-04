@@ -29,6 +29,7 @@ import datetime
 import json
 import os
 import re
+import subprocess
 import sys
 
 STAMP = re.compile(r"^-\s*\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]")
@@ -79,6 +80,17 @@ def last_stamp(path):
     return best
 
 
+def last_commit_ts(path):
+    """Время последнего коммита файла (реальные машинные часы, не шкала чата)."""
+    try:
+        out = subprocess.run(["git", "log", "-1", "--format=%ct", "--", path],
+                             capture_output=True, text=True).stdout.strip()
+        if out.isdigit():
+            return datetime.datetime.fromtimestamp(int(out))
+    except Exception:
+        pass
+    return None
+
 def now_project(cfg):
     return (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
             + datetime.timedelta(hours=cfg["tz_offset_hours"]))
@@ -87,7 +99,7 @@ def now_project(cfg):
 def idle_roles(cfg, now):
     idle, active = [], []
     for role in cfg["roles"]:
-        last = last_stamp(os.path.join(cfg["chat_dir"], role + ".md"))
+        last = last_commit_ts(os.path.join(cfg["chat_dir"], role + ".md"))
         if last is None or (now - last) > datetime.timedelta(minutes=cfg["idle_minutes"]):
             idle.append((role, last))
         else:
