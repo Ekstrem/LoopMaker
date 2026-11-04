@@ -25,7 +25,7 @@ import re
 import sys
 
 MARK = re.compile(r'<!--\s*canon:\s*([\w][\w.-]*)\s*-->')
-DEFAULT_PATTERNS = ['**/*.md', '**/*.py']
+DEFAULT_PATTERNS = ['**/*.md']
 
 
 def scan(root, patterns):
@@ -36,7 +36,7 @@ def scan(root, patterns):
             if os.path.isdir(path):
                 continue
             rel = path.replace('\\', '/')
-            if '/.git/' in rel or '/node_modules/' in rel:
+            if '/.git/' in rel or '/node_modules/' in rel or '/chat/' in rel:
                 continue
             try:
                 text = open(path, encoding='utf-8-sig').read()
