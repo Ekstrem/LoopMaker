@@ -23,7 +23,6 @@ import json
 import os
 import re
 import sys
-import tempfile
 
 MARK = re.compile(r'<!--\s*canon:\s*([\w][\w.-]*)\s*-->')
 DEFAULT_PATTERNS = ['**/*.md', '**/*.py']
@@ -65,7 +64,8 @@ def run(root, patterns):
 
 
 def selftest():
-    tmp = tempfile.mkdtemp(prefix='check_canon_')
+    tmp = os.path.join(os.getcwd(), '.tmp-check_canon-selftest')
+    os.makedirs(tmp, exist_ok=True)
     try:
         # 1) дубль маркера -> ошибка
         d = os.path.join(tmp, 'd1')
