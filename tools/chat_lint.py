@@ -452,15 +452,11 @@ def main():
         chat_dir0, _, cfg0 = load_config(args.config)
         shift0 = int((cfg0.get("chat_time") or {}).get("shift_hours", 0))
         tz0 = int((cfg0.get("chat_time") or {}).get("tz_offset_hours", 3))
-        mx = chat_max_stamp(chat_dir0)
+        # Реальное время (владелец 2026-11-15, вариант А): метка = часы машины + TZ-сдвиг.
+        # Уехавшая вперёд шкала — баг, не норма; её больше не поддерживаем.
         machine = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
                    + datetime.timedelta(hours=tz0 + shift0))
-        # Шкала чата первична: метка = максимум по чату + 1 минута (не «в прошлое»).
-        # Если чат пуст — машинные часы в TZ проекта.
-        stamp = (mx + datetime.timedelta(minutes=1)) if mx else machine
-        if mx and machine > stamp:
-            stamp = machine  # если машина внезапно ушла вперёд — берём её
-        print(stamp.strftime("%Y-%m-%d %H:%M"))
+        print(machine.strftime("%Y-%m-%d %H:%M"))
         return 0
 
     chat_dir, titles, cfg = load_config(args.config)
