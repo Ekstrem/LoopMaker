@@ -103,25 +103,26 @@ def ping_message(cfg, now, idle, active):
 
 
 def selftest():
-    import tempfile
+    import shutil as _shutil
     ok = True
-    # 1) defaults загружаются без конфига
     cfg = load_config(None)
     ok &= cfg["project"] == "XDiary" and cfg["idle_ratio"] == 0.8
-    # 2) last_stamp: битые метки (час>23) пропускаются, валидная берётся
-    d = tempfile.mkdtemp()
-    p = os.path.join(d, "be.md")
-    with open(p, "w", encoding="utf-8") as f:
-        f.write("- [2026-11-04 25:00] → @TL: битая\n")
-        f.write("- [2026-11-04 07:00] → @TL: валидная\n")
-    ok &= last_stamp(p) == datetime.datetime(2026, 11, 4, 7, 0)
-    # 3) пустой outbox = нет метки
-    ok &= last_stamp(os.path.join(d, "do.md")) is None
-    # 4) порог: 1 из 2 простаивает = 50% < 80%
-    cfg2 = dict(DEFAULTS); cfg2["chat_dir"] = d; cfg2["roles"] = ["be", "do"]
-    now = datetime.datetime(2026, 11, 4, 12, 0)
-    idle, active = idle_roles(cfg2, now)
-    ok &= len(idle) == 1 and len(active) == 1
+    d = os.path.join(os.getcwd(), ".tmp-knout-selftest")
+    _shutil.rmtree(d, ignore_errors=True)
+    os.makedirs(d, exist_ok=True)
+    try:
+        p = os.path.join(d, "be.md")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("- [2026-11-04 25:00] → @TL: битая\n")
+            f.write("- [2026-11-04 07:00] → @TL: валидная\n")
+        ok &= last_stamp(p) == datetime.datetime(2026, 11, 4, 7, 0)
+        ok &= last_stamp(os.path.join(d, "do.md")) is None
+        cfg2 = dict(DEFAULTS); cfg2["chat_dir"] = d; cfg2["roles"] = ["be", "do"]
+        now = datetime.datetime(2026, 11, 4, 12, 0)
+        idle, active = idle_roles(cfg2, now)
+        ok &= len(idle) == 1 and len(active) == 1
+    finally:
+        _shutil.rmtree(d, ignore_errors=True)
     print("selftest:", "OK" if ok else "FAIL")
     return 0 if ok else 1
 
