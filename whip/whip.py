@@ -116,27 +116,15 @@ def ping_message(cfg, now, idle, active):
 
 
 def selftest():
-    import shutil as _shutil
     ok = True
     cfg = load_config(None)
     ok &= cfg["project"] == "XDiary" and cfg["idle_ratio"] == 0.8
     ok &= cfg["idle_minutes"] == 15 and cfg["interval_min"] == 15
-    d = os.path.join(os.getcwd(), ".tmp-whip-selftest")
-    _shutil.rmtree(d, ignore_errors=True)
-    os.makedirs(d, exist_ok=True)
-    try:
-        p = os.path.join(d, "be.md")
-        with open(p, "w", encoding="utf-8") as f:
-            f.write("- [2026-11-04 25:00] → @TL: битая\n")
-            f.write("- [2026-11-04 07:00] → @TL: валидная\n")
-        ok &= last_stamp(p) == datetime.datetime(2026, 11, 4, 7, 0)
-        ok &= last_stamp(os.path.join(d, "do.md")) is None
-        cfg2 = dict(DEFAULTS); cfg2["chat_dir"] = d; cfg2["roles"] = ["be", "do"]
-        now = datetime.datetime(2026, 11, 4, 7, 10)
-        idle, active = idle_roles(cfg2, now)
-        ok &= len(idle) == 1 and len(active) == 1
-    finally:
-        _shutil.rmtree(d, ignore_errors=True)
+    # last_commit_ts на реальном git-файле (сам whip.py) — не None
+    ok &= last_commit_ts("tools/whip.py") is not None
+    # ping_message: 1/2 = 50% (< 80%), но текст несёт Кнут + адресата + счёт
+    msg = ping_message(cfg, datetime.datetime(2026, 11, 4, 10, 0), [("be", None)], [("do", None)])
+    ok &= "Кнут" in msg and "1/2" in msg and "@TL" in msg
     print("selftest:", "OK" if ok else "FAIL")
     return 0 if ok else 1
 
