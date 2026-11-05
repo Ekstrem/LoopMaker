@@ -9,7 +9,7 @@
 
 **Зона (пишет только сюда):**
 - `XDiary/AGENTS.md`, `XDiary/loop.config.json`, `XDiary/5-tech-backlog/chat/lm.md`;
-- `LoopMaker/` (правила, шаблоны, PDR-драфты, `RULES.md`, `RULES.LoopMaster.md`, `PLUGIN.md`).
+- `LoopMaker/` (правила, шаблоны, PDR-драфты, `RULES.md`, `Roles/LoopMaster/RULES.LoopMaster.md`, `PLUGIN.md`).
 
 **Обязанности:**
 - правила/линтеры/инструменты — только @LM;
