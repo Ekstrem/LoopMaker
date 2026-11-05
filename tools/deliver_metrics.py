@@ -53,7 +53,7 @@ def main():
                                 "--config", os.path.join(wb, "loop.config.json"), "--next-stamp"],
                                capture_output=True, text=True, encoding="utf-8").stdout.strip()
         with open(outbox, "a", encoding="utf-8") as f:
-            f.write(f"- [{stamp}]{text}\n")
+            f.write(f"- [{stamp}] {text}\n")
     print(f"доставлено {len(lines)} текстов в outbox ролей")
     return 0
 
