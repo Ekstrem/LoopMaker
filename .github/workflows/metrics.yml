@@ -1,0 +1,28 @@
+name: metrics
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  metrics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout project (from projects.json)
+        run: |
+          REPO=$(python -c "import json;print(json.load(open('projects.json'))['projects'][json.load(open('projects.json'))['current']]['repo'].split('github.com/')[1])")
+          git clone --depth 1 "https://github.com/$REPO" workbench
+      - name: Run collector
+        run: python tools/metrics.py
+      - name: Commit SCOREBOARD
+        run: |
+          git config user.name loop-metrics
+          git config user.email metrics@loopmaker.local
+          git add SCOREBOARD.md
+          git commit -m "metrics: scoreboard" || echo "no changes"
+          git push
