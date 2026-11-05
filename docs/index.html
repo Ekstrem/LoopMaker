@@ -24,13 +24,13 @@
 <div style="height:420px"><canvas id="chart"></canvas></div>
 </div>
 <script>
-const RAW = "https://raw.githubusercontent.com/Ekstrem/LoopMaker/main/";
+const RAW = "./";
 const COLOR = {ok:"#2e7d32", violation:"#c62828", unknown:"#f9a825"};
 const NUM = {ok:1, violation:0, unknown:0.5};
 (async () => {
   let hist = [];
   try {
-    hist = (await (await fetch(RAW + "metrics/history.jsonl")).text()).trim().split("\n").filter(Boolean).map(JSON.parse);
+    hist = (await (await fetch(RAW + "history.jsonl")).text()).trim().split("\n").filter(Boolean).map(JSON.parse);
   } catch (e) { document.getElementById("meta").textContent = "нет данных: " + e; return; }
   document.getElementById("meta").textContent = "замеров: " + hist.length + " · последний: " + hist[hist.length-1].ts;
   // последний замер на роль|метрику

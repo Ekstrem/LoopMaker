@@ -24,6 +24,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v4
+      - name: Copy metric data into docs
+        run: cp SCOREBOARD.md docs/ && cp metrics/history.jsonl docs/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs
