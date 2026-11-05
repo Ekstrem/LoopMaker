@@ -1,4 +1,4 @@
-import json, os, glob, hashlib, re, argparse, sys
+import json, os, hashlib, re, subprocess, argparse, sys
 
 def body_hash(txt):
     body = re.sub(r"\*\*Статус:\*\*[^\n]*\n", "", txt)
@@ -8,13 +8,17 @@ def body_hash(txt):
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--workbench", required=True)
     wb = ap.parse_args().workbench
-    adl = os.path.join(wb, "04-architecture", "ADL")
+    subprocess.run(["git","-C",wb,"fetch","origin","main"], capture_output=True)
+    files = subprocess.run(["git","-C",wb,"ls-tree","-r","--name-only","origin/main","--","04-architecture/ADL/"],
+                           capture_output=True, text=True).stdout.splitlines()
     manifest = {}
-    for f in sorted(glob.glob(os.path.join(adl, "adr-*.md"))):
-        txt = open(f, encoding="utf-8").read()
+    for f in files:
+        if not f.startswith("04-architecture/ADL/adr-") or not f.endswith(".md"):
+            continue
+        txt = subprocess.run(["git","-C",wb,"show",f"origin/main:{f}"], capture_output=True, text=True).stdout
         if re.search(r"\*\*Статус:\*\*\s*Принято", txt):
             manifest[os.path.basename(f)] = body_hash(txt)
-    mp = os.path.join(adl, ".frozen.json")
+    mp = os.path.join(wb, "04-architecture", "ADL", ".frozen.json")
     json.dump(manifest, open(mp, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     print(json.dumps({"role":"AR","metric":"adr_frozen","status":"ok","value":f"{len(manifest)} frozen","detail":"manifest created"}, ensure_ascii=False))
     return 0
