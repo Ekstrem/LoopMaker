@@ -1,0 +1,10 @@
+{
+  "current": "xdiary",
+  "projects": {
+    "xdiary": {
+      "name": "XDiary",
+      "repo": "https://github.com/Ekstrem/XDiary",
+      "workbench": "../XDiary"
+    }
+  }
+}
