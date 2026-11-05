@@ -1,0 +1,3 @@
+{"ts": "2026-11-05T12:56:50.576329+00:00", "role": "AR", "metric": "adr_frozen", "status": "ok", "value": "22 frozen"}
+{"ts": "2026-11-05T12:56:50.576329+00:00", "role": "BE", "metric": "dtf_usage", "status": "violation", "value": "own infra"}
+{"ts": "2026-11-05T12:56:50.576329+00:00", "role": "FE", "metric": "fe_version", "status": "ok", "value": "no js change"}
