@@ -48,6 +48,13 @@ def main():
     for role, metric, status, value, detail in rows:
         lines.append(f"| {role} | {metric} | {status} | {value} | {detail} |")
     open(os.path.join(ROOT, "SCOREBOARD.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
+    # история (динамика): дописываем строку на каждый замер
+    ts = datetime.now(timezone.utc).isoformat()
+    hist = os.path.join(ROOT, "metrics", "history.jsonl")
+    os.makedirs(os.path.dirname(hist), exist_ok=True)
+    with open(hist, "a", encoding="utf-8") as f:
+        for role, metric, status, value, _detail in rows:
+            f.write(json.dumps({"ts": ts, "role": role, "metric": metric, "status": status, "value": value}, ensure_ascii=False) + "\n")
     print(f"SCOREBOARD.md обновлён: {len(rows)} метрик")
 
 

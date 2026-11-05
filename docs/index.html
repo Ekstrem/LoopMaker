@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Метрики петли</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:24px;color:#1a1a1a}
+  h1{font-size:22px} .meta{color:#666;font-size:13px}
+  table{border-collapse:collapse;margin:16px 0;font-size:14px}
+  th,td{border:1px solid #e0e0e0;padding:6px 10px;text-align:left}
+  th{background:#f5f5f5}
+  .ok{color:#2e7d32}.violation{color:#c62828}.unknown{color:#f9a825}
+  .wrap{max-width:900px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Метрики петли</h1>
+<p class="meta" id="meta"></p>
+<table id="summary"></table>
+<h2>Динамика (ok=верх, violation=низ, unknown=середина)</h2>
+<div style="height:420px"><canvas id="chart"></canvas></div>
+</div>
+<script>
+const RAW = "https://raw.githubusercontent.com/Ekstrem/LoopMaker/main/";
+const COLOR = {ok:"#2e7d32", violation:"#c62828", unknown:"#f9a825"};
+const NUM = {ok:1, violation:0, unknown:0.5};
+(async () => {
+  let hist = [];
+  try {
+    hist = (await (await fetch(RAW + "metrics/history.jsonl")).text()).trim().split("\n").filter(Boolean).map(JSON.parse);
+  } catch (e) { document.getElementById("meta").textContent = "нет данных: " + e; return; }
+  document.getElementById("meta").textContent = "замеров: " + hist.length + " · последний: " + hist[hist.length-1].ts;
+  // последний замер на роль|метрику
+  const keys = [...new Set(hist.map(h => h.role + "|" + h.metric))];
+  const latest = {};
+  for (const k of keys) latest[k] = hist.filter(h => (h.role+"|"+h.metric)===k).slice(-1)[0];
+  let t = "<tr><th>Роль</th><th>Метрика</th><th>Статус</th><th>Значение</th><th>Последние 12</th></tr>";
+  for (const k of keys) {
+    const [role, metric] = k.split("|");
+    const r = latest[k];
+    const trail = hist.filter(h => (h.role+"|"+h.metric)===k).slice(-12).map(h => `<span class="${h.status}" title="${h.ts}">●</span>`).join("");
+    t += `<tr><td>${role}</td><td>${metric}</td><td class="${r.status}">${r.status}</td><td>${r.value}</td><td>${trail}</td></tr>`;
+  }
+  document.getElementById("summary").innerHTML = t;
+  // тренд: ось X = уникальные метки времени, по линии на метрику
+  const labels = [...new Set(hist.map(h => h.ts.slice(0,16)))];
+  const series = keys.map(k => {
+    const [role, metric] = k.split("|");
+    const pts = hist.filter(h => (h.role+"|"+h.metric)===k);
+    return { label: role + "." + metric, data: labels.map(ts => { const p = pts.find(h => h.ts.slice(0,16)===ts); return p ? NUM[p.status] : null; }), stepped: true, borderWidth: 2 };
+  });
+  new Chart(document.getElementById("chart"), {
+    type: "line",
+    data: { labels, datasets: series },
+    options: { scales: { y: { min:0, max:1, ticks: { callback: v => ["violation","unknown","ok"][Math.round(v*2)] } } }, plugins: { legend: { position: "bottom" } } }
+  });
+})();
+</script>
+</body>
+</html>
