@@ -1,21 +1,23 @@
-import json, os, glob, hashlib, re, argparse, sys
+import json, os, hashlib, re, subprocess, argparse, sys
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--workbench", required=True)
     wb = ap.parse_args().workbench
-    adl = os.path.join(wb, "04-architecture", "ADL")
-    mp = os.path.join(adl, ".frozen.json")
-    if not os.path.exists(mp):
+    subprocess.run(["git","-C",wb,"fetch","origin","main"], capture_output=True)
+    mp_txt = subprocess.run(["git","-C",wb,"show","origin/main:04-architecture/ADL/.frozen.json"],
+                            capture_output=True, text=True).stdout
+    if not mp_txt.strip():
         print(json.dumps({"role":"AR","metric":"adr_frozen","status":"unknown","value":"no manifest","detail":".frozen.json absent"}, ensure_ascii=False)); return 2
-    manifest = json.load(open(mp, encoding="utf-8"))
-    bad = []
-    for f in sorted(glob.glob(os.path.join(adl, "adr-*.md"))):
-        txt = open(f, encoding="utf-8").read()
+    manifest = json.loads(mp_txt)
+    def body_hash(txt):
         body = re.sub(r"\*\*Статус:\*\*[^\n]*\n", "", txt)
         body = re.split(r"## 4\. Последствия", body)[0]
-        h = hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
-        name = os.path.basename(f)
-        if name in manifest and manifest[name] != h:
+        return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
+    bad = []
+    for name in manifest:
+        txt = subprocess.run(["git","-C",wb,"show",f"origin/main:04-architecture/ADL/{name}"],
+                             capture_output=True, text=True).stdout
+        if txt and manifest[name] != body_hash(txt):
             bad.append(name)
     if bad:
         print(json.dumps({"role":"AR","metric":"adr_frozen","status":"violation","value":f"{len(bad)} mismatch","detail":",".join(bad)}, ensure_ascii=False)); return 1

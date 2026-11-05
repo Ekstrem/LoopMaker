@@ -3,8 +3,9 @@ import json, subprocess, argparse, sys
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--workbench", required=True)
     wb = ap.parse_args().workbench
+    subprocess.run(["git","-C",wb,"fetch","origin","main"], capture_output=True)
     def grep(p, path):
-        return subprocess.run(["git","-C",wb,"grep","-n","-e",p,"--",path],
+        return subprocess.run(["git","-C",wb,"grep","-n","-e",p,"origin/main","--",path],
                               capture_output=True, text=True).stdout.strip()
     own = grep(r"CREATE TABLE IF NOT EXISTS|EnsureCreated", "6-msa")
     save = grep("SaveChangesAsync", "6-msa/**/*Command*.cs") or grep("SaveChangesAsync", "6-msa/**/Handlers*.cs")
