@@ -10,13 +10,13 @@ def main():
     wb = ap.parse_args().workbench
     subprocess.run(["git","-C",wb,"fetch","origin","main"], capture_output=True)
     files = subprocess.run(["git","-C",wb,"ls-tree","-r","--name-only","origin/main","--","04-architecture/ADL/"],
-                           capture_output=True, text=True).stdout.splitlines()
+                           capture_output=True, text=True, encoding="utf-8").stdout.splitlines()
     manifest = {}
     for f in files:
         if not f.startswith("04-architecture/ADL/adr-") or not f.endswith(".md"):
             continue
-        txt = subprocess.run(["git","-C",wb,"show",f"origin/main:{f}"], capture_output=True, text=True).stdout
-        if re.search(r"\*\*Статус:\*\*\s*Принято", txt):
+        txt = subprocess.run(["git","-C",wb,"show",f"origin/main:{f}"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
+        if txt and re.search(r"\*\*Статус:\*\*\s*Принято", txt):
             manifest[os.path.basename(f)] = body_hash(txt)
     mp = os.path.join(wb, "04-architecture", "ADL", ".frozen.json")
     json.dump(manifest, open(mp, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
