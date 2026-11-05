@@ -32,6 +32,8 @@ def run_tool(workbench, script):
 def main():
     proj = load_project()
     wb = proj["workbench"]
+    if not os.path.isabs(wb):
+        wb = os.path.normpath(os.path.join(ROOT, wb))
     rows = []
     for role, tools in METRICS.items():
         for metric, script in tools:
