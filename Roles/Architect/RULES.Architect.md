@@ -19,6 +19,8 @@
    на соответствие **EDM/DTF** (см. [`DigiTFactory.md`](../../DigiTFactory.md)).
 5. В `04-architecture/` — описание архитектуры уровня **Context и Container** (C4) + обязательные
    схемы инфраструктуры.
+6. **Вклад в DTF (DigiTFactory)** — работа архитектора должна нести вклад в DTF: обобщаемые
+   решения и паттерны → заводить в репозитории DigiTFactory (см. [`DigiTFactory.md`](../../DigiTFactory.md)).
 
 **Не делает:**
 - не пишет код (BE/FE/DO);
