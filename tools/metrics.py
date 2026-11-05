@@ -6,9 +6,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Реестр: роль -> список (имя метрики, путь скрипта). Заполняется по мере реализации тулов.
 METRICS = {
-    # "AR": [("adr_frozen", "tools/metrics/check_adr_frozen.py")],
-    # "BE": [("dtf_usage", "tools/metrics/check_dtf_usage.py")],
-    # "FE": [("fe_version", "tools/metrics/check_fe_version.py")],
+    "AR": [("adr_frozen", "tools/metrics/check_adr_frozen.py")],
+    "BE": [("dtf_usage", "tools/metrics/check_dtf_usage.py")],
+    "FE": [("fe_version", "tools/metrics/check_fe_version.py")],
 }
 
 
