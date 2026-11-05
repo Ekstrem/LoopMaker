@@ -223,7 +223,7 @@ def main():
                 problems.append(item)
         for field in rules.get(value, []):
             got = field_value(text, field)
-            if len(got) < 5:
+            if not got.strip():
                 level = "error" if ("%s:%s" % (value, field)) in ERROR_FIELDS else "warn"
                 problems.append({"file": rel, "status": value, "level": level,
                                  "problem": "нет/пусто поле «%s»" % field})
