@@ -304,7 +304,7 @@ python tools/health.py --no-ci         # без сети (быстро, лока
     git ls-remote --heads origin main      # проверка: отвечает
 
 - **Синхронизация — одной командой:** `python tools/git_sync.py --role XX`
-  (wip по зоне → fetch → rebase --autostash → push → проверка «впереди 0»).
+  (wip по зоне → fetch → merge → push → проверка «впереди 0»).
 - **`wip` только по зоне роли** (`zones` из `loop.config.json`), иначе захватишь чужие
   правки: `--paths` для расширения, `--all` как осознанное исключение.
 - **HTTPS-фолбэк** — только если ssh недоступен: токен из личного хранилища (вне
@@ -313,6 +313,8 @@ python tools/health.py --no-ci         # без сети (быстро, лока
   проверка: `tools/check_rule_docs.py`.
 - «Дошло» проверяется только после `fetch`: `git rev-list --count origin/main..HEAD` = 0;
   SHA упоминаем после `git merge-base --is-ancestor`.
+- **Конкурентная работа с общим деревом** (неизменяемость git, что делать если merge
+  «не подходит», почему не `reset`) — [docs/GIT-CONCURRENCY.md](docs/GIT-CONCURRENCY.md).
 
 **Повреждённые метаданные git** (`.git/rebase-merge` без `head-name`, «could not read
 head-name», `rebase --abort` не работает) — отдельный случай: сначала объявление в чат,

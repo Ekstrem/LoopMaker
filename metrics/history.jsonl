@@ -1,3 +1,12 @@
 {"ts": "2026-11-05T12:56:50.576329+00:00", "role": "AR", "metric": "adr_frozen", "status": "ok", "value": "22 frozen"}
 {"ts": "2026-11-05T12:56:50.576329+00:00", "role": "BE", "metric": "dtf_usage", "status": "violation", "value": "own infra"}
 {"ts": "2026-11-05T12:56:50.576329+00:00", "role": "FE", "metric": "fe_version", "status": "ok", "value": "no js change"}
+{"ts": "2026-11-05T14:27:13.429544+00:00", "role": "AR", "metric": "adr_frozen", "status": "violation", "value": "8 mismatch"}
+{"ts": "2026-11-05T14:27:13.429544+00:00", "role": "BE", "metric": "dtf_usage", "status": "violation", "value": "own infra"}
+{"ts": "2026-11-05T14:27:13.429544+00:00", "role": "FE", "metric": "fe_version", "status": "ok", "value": "no js change"}
+{"ts": "2026-11-05T14:29:13.229525+00:00", "role": "AR", "metric": "adr_frozen", "status": "violation", "value": "8 mismatch"}
+{"ts": "2026-11-05T14:29:13.229525+00:00", "role": "BE", "metric": "dtf_usage", "status": "violation", "value": "own infra"}
+{"ts": "2026-11-05T14:29:13.229525+00:00", "role": "FE", "metric": "fe_version", "status": "ok", "value": "no js change"}
+{"ts": "2026-11-05T14:34:24.161135+00:00", "role": "AR", "metric": "adr_frozen", "status": "ok", "value": "22 frozen"}
+{"ts": "2026-11-05T14:34:24.161135+00:00", "role": "BE", "metric": "dtf_usage", "status": "violation", "value": "own infra"}
+{"ts": "2026-11-05T14:34:24.161135+00:00", "role": "FE", "metric": "fe_version", "status": "ok", "value": "no js change"}
