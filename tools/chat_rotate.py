@@ -164,7 +164,7 @@ def main():
                 json.dump(state, f, ensure_ascii=False)
             print("  мигрировано ключей: %d" % changed)
         except OSError as e:
-            sys.exit("chat_rotate: не удалось обновить состояние (%s) — файлы не тронуты" % e)
+            print("  ВНИМАНИЕ: состояние не обновлено (%s) — миграция пропущена (archive не сканируется, пере-доставки не будет)" % e)
 
     os.makedirs(arch_dir, exist_ok=True)
     if os.path.exists(arch_path):
