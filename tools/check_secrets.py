@@ -355,7 +355,7 @@ def selftest():
     bad += 0 if not f else 1
 
     # sha256-дайджест (64-hex) — не секрет
-    sha256 = "5e90d7fb7864a017dab7e64ac20f0039471aa6958decfa4606bab6cb096f1"
+    sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     f = scan_text("sha256 " + sha256)
     print("  [%s] sha256-дайджест (64-hex) -> находок %d (ожидали 0)" % ("OK " if not f else "FAIL", len(f)))
     bad += 0 if not f else 1
