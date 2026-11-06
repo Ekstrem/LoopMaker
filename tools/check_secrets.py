@@ -281,6 +281,19 @@ def looks_like_secret(value):
     return True
 
 
+def _hex_is_identifier(value):
+    """40-hex -> git-объект (SHA-1), 64-hex -> sha256-дайджест: публичный идентификатор, не секрет."""
+    v = (value or "").strip()
+    if len(v) == 40:
+        try:
+            return subprocess.run(["git", "cat-file", "-e", v], capture_output=True).returncode == 0
+        except Exception:
+            return False
+    if len(v) == 64:
+        return True
+    return False
+
+
 def scan_text(text, allow_shapes=True):
     findings = []
     for i, line in enumerate(text.splitlines(), 1):
@@ -298,6 +311,8 @@ def scan_text(text, allow_shapes=True):
                 for m in rx.finditer(line):
                     if looks_like_identifier_chain(m.group(0)):
                         continue          # цепочка идентификаторов, не ключ (дефект 2026-11-10)
+                    if name == "hex-long" and _hex_is_identifier(m.group(0)):
+                        continue          # git-объект/sha256-дайджест — не секрет (дефект 2026-11-07)
                     if looks_like_secret(m.group(0)):
                         findings.append((name, i, len(m.group(0))))
     return findings
@@ -331,6 +346,18 @@ def selftest():
     prose = "Проверяем что middleware подключается корректно и Claims доступны"
     f = scan_text(prose)
     print("  [%s] обычная проза -> находок %d" % ("OK " if not f else "FAIL", len(f)))
+    bad += 0 if not f else 1
+
+    # git-объект (HEAD) — публичный идентификатор, не секрет
+    head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    f = scan_text("revision: " + head) if len(head) == 40 else []
+    print("  [%s] git-коммит (40-hex) -> находок %d (ожидали 0)" % ("OK " if not f else "FAIL", len(f)))
+    bad += 0 if not f else 1
+
+    # sha256-дайджест (64-hex) — не секрет
+    sha256 = "5e90d7fb7864a017dab7e64ac20f0039471aa6958decfa4606bab6cb096f1"
+    f = scan_text("sha256 " + sha256)
+    print("  [%s] sha256-дайджест (64-hex) -> находок %d (ожидали 0)" % ("OK " if not f else "FAIL", len(f)))
     bad += 0 if not f else 1
 
     print("check_secrets: самопроверка %s" % ("пройдена" if bad == 0 else "ПРОВАЛЕНА"))
