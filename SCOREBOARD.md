@@ -1,10 +1,10 @@
 # SCOREBOARD
 
-> проект: XDiary (C:\Users\About\Documents\GitHub\XDiary)
-> собрано: 2026-11-05T12:56:50.575330+00:00
+> проект: XDiary (/home/runner/work/LoopMaker/XDiary)
+> собрано: 2026-11-06T00:55:47.246834+00:00
 
 | Роль | Метрика | Статус | Значение | Деталь |
 |---|---|---|---|---|
-| AR | adr_frozen | ok | 22 frozen |  |
-| BE | dtf_usage | violation | own infra | CREATE_TABLE=False SaveChanges_cmd=True |
+| AR | adr_frozen | unknown | no manifest | .frozen.json absent |
+| BE | dtf_usage | violation | no DTF | no DigiTFactory refs |
 | FE | fe_version | ok | no js change |  |
