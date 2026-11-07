@@ -53,7 +53,7 @@ ALLOWLIST = {
 
 SKIP_VALUE_PREFIXES = ("$", "os.", "process.env", "env.", "config.", "getenv", "{", "(")
 SKIP_VALUES = {"", "null", "none", "true", "false", '""', "''", "string", "password",
-               "token", "secret", "write", "read", "admin", "bearer",
+               "token", "secret", "write", "read", "admin", "bearer", "postgres",
                # имена типов в документации: {token: bool, tokenLen: number} — не секреты
                # (список согласован с @TL 20:35: bool, boolean, number, string, int, length, masked)
                "bool", "boolean", "int", "integer", "number", "object", "undefined",
@@ -133,20 +133,10 @@ def load_config(root, path=None):
 def default_paths(cfg):
     backlog = cfg.get("backlog") or "5-backlog"
     chat = cfg.get("chat") or os.path.join(backlog, "chat")
-    return [
-        os.path.join(chat, "*.md"),
-        os.path.join(backlog, "**", "*.md"),
-        "README.md", "CHANGELOG.md", "AGENTS.md",
-        # DO-065: зелёный guard-secrets не значил «секретов нет», пока не сканировались
-        # скрипты и инфраструктура. Подложенный `ghp_` в `.sh` проходил незамеченным.
-        "9-tests/**/*.sh",
-        "9-tests/**/*.ps1",
-        "7-deploy/**/*.sh",
-        "7-deploy/**/*.ps1",
-        "7-deploy/**/*.yml",
-        "7-deploy/**/*.yaml",
-        "tools/**/*.py",
-    ]
+    # AN-03 (2026-11-07): whitelist давал слепую зону (6-msa, ранбуки, отчёты не
+    # сканировались — «известный allowlist» три месяца). Сканируем ВСЁ, кроме явных
+    # исключений: bin/obj/node_modules/.git режет `_glob`, расширения — SCAN_EXTS.
+    return ["**/*"]
 
 
 def expand_patterns(root, cfg):

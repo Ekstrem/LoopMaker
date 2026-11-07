@@ -17,7 +17,7 @@ import sys
 
 SKIP_DIRS = {"chat", "archive", ".git", "bin", "obj", "node_modules", ".obsidian"}
 
-HOME_PATH = re.compile(r"[A-Za-z]:\\\\?Users\\\\?[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+|/Users/[A-Za-z0-9._-]+")
+HOME_PATH = re.compile(r"[A-Za-z]:\\\\?Users\\\\?[A-Za-z0-9._-]+|/home/(?!(?:deploy|ubuntu|runner)\b)[A-Za-z0-9._-]+|/Users/[A-Za-z0-9._-]+")
 TOKEN = re.compile(r"\b(ghp_|gho_|ghs_|ghu_|github_pat_)[A-Za-z0-9_]{6,}")
 FORCE = re.compile(r"push[^\n]{0,40}--force(?!-with-lease)")
 
