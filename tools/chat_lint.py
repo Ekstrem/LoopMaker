@@ -552,5 +552,27 @@ def main():
     return 0
 
 
+def main_with_retry(attempts=3):
+    """AN-04 (2026-11-10): файл чата могли менять во время чтения (роль пишет/ротация),
+    из-за чего прогон падал трейсбеком, а следующий — зелёный. Гейт не должен зависеть
+    от момента чтения. Поэтому: повтор прогона, и только затем явное «НЕ ИЗМЕРЕНО» (rc=2).
+    `errors="replace"` запрещён: он превращает битую кодировку в тихо-зелёный прогон.
+    """
+    import time as _time
+    last = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return main()
+        except (OSError, UnicodeDecodeError) as exc:
+            last = exc
+            if attempt < attempts:
+                print("chat_lint: чтение прервано (%s) — повтор %d/%d"
+                      % (type(exc).__name__, attempt, attempts - 1))
+                _time.sleep(0.3)
+    print("::error::chat_lint: файл менялся во время чтения — НЕ ИЗМЕРЕНО (%s: %s)"
+          % (type(last).__name__, last))
+    return 2
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_with_retry())
