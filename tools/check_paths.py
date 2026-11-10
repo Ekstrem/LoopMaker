@@ -202,7 +202,7 @@ def main():
     if digest_bad:
         for sha, subject in digest_bad:
             print("::error::%s меняет %s без признака генерации: «%s» — коммить "
-                  "`python tools/merge_chat.py` отдельно с префиксом `chore(chat)`"
+                  "одним коммитом с префиксом `chore(chat)`"
                   % (sha[:8], DIGEST_PATH, subject[:60]))
         if not a.report_only:
             return 1

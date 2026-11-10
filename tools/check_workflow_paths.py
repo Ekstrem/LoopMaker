@@ -30,7 +30,7 @@ except ImportError:  # pragma: no cover
     yaml = None
 
 CONFIG = "loop.config.json"
-DEFAULT_LIGHT = ["guard-paths.yml", "stats.yml", "merge-chat.yml", "chat-guards.yml"]
+DEFAULT_LIGHT = ["guard-paths.yml", "stats.yml", "chat-guards.yml"]
 
 
 def repo_root(arg=None):

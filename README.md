@@ -40,7 +40,6 @@ be.md:  - [10:00] → @FE: посмотри контракт JWT
    - `stats.py` — таблица статусов задач в README (`--write` / `--check`);
    - `status_lint.py` — линтер статусов: значение из списка, синонимы, обязательные поля;
    - `migrate_statuses.py` — миграция значений статуса (по умолчанию dry-run);
-   - `merge_chat.py` — сводка диалога из outbox-файлов;
    - `chat_inbox.py` — гейт координатора: есть ли вопрос без ответа;
    - `chat_lint.py` — линтер формата строки чата (пишет автору в `chat/_lint.md`);
    - `check_secrets.py` — секреты и их **фрагменты** в чате/задачах/доках (код 1 на находке);
@@ -63,7 +62,6 @@ python tools/check_paths.py --zones      # карта зон из loop.config.js
 python tools/check_paths.py --range HEAD~20..HEAD --report-only   # аудит истории
 python tools/stats.py --write            # обновить таблицу в README
 python tools/status_lint.py --config loop.config.json   # статусы и обязательные поля
-python tools/merge_chat.py               # собрать сводку чата
 python tools/chat_inbox.py               # вопросы к @TL без ответа (код 1 = есть)
 python tools/chat_lint.py                # формат строк чата (код 1 = есть нарушения)
 python tools/check_secrets.py            # утечки секретов (код 1 = есть находки)

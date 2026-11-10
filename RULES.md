@@ -32,7 +32,7 @@
 
 | Копировать как есть | Писать под проект |
 |---|---|
-| `tools/check_paths.py`, `tools/stats.py`, `tools/merge_chat.py`, `tools/chat_inbox.py`, `tools/sweep.py`, `tools/check_secrets.py`, `tools/keycmp.py`, `tools/chat_lint.py`, `tools/check_workflow_paths.py`, `tools/ci_metrics.py`, `tools/status_lint.py`, `tools/migrate_statuses.py`, `tools/health.py`, `tools/sync_tools.py` | `loop.config.json` (зоны, папки, роли, статусы) |
+| `tools/check_paths.py`, `tools/stats.py`, `tools/chat_inbox.py`, `tools/sweep.py`, `tools/check_secrets.py`, `tools/keycmp.py`, `tools/chat_lint.py`, `tools/check_workflow_paths.py`, `tools/ci_metrics.py`, `tools/status_lint.py`, `tools/migrate_statuses.py`, `tools/health.py`, `tools/sync_tools.py` | `loop.config.json` (зоны, папки, роли, статусы) |
 | форматы задачи и строки чата | состав ролей и их компетенции |
 | ритуал проверки и закрытия | домен: что считается «готово» |
 | workflow-файлы | CI-специфика (язык, тесты, деплой) |
@@ -68,7 +68,7 @@ python tools/sync_tools.py --pull --from ../LoopMaker   # пересинхрон
 
 **Правило для агентов:** формат строки чата — общий контракт. Меняешь его
 (стрелку, тег адресата, время) — правь одновременно `lib/parse.js`,
-`tools/merge_chat.py`, `tools/chat_inbox.py` и тесты, иначе одно из трёх перестанет
+`tools/chat_inbox.py` и тесты, иначе кто-то из потребителей перестанет
 видеть сообщения. Так уже случалось: BOM и `@TESTENGINEER` вместо `@TE` ломали
 распознавание молча.
 
