@@ -125,7 +125,26 @@ STRICT = re.compile(
     r"^-\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\s*→\s*@[A-Za-z]+(?:\s*[/+,;]\s*@?[A-Za-z]+)*:\s+\S"
 )
 # Адресаты через `/` (исторически популярно) — канон это `+`, поэтому считаем отдельно.
+# AN-05 (2026-11-10): адресат БЕЗ `@` — мост (`lib/parse.js`) такую строку НЕ доставит:
+# адресат ищется по `@`. Парсер линтера её «понимает», поэтому класс терялся молча.
+NO_AT = re.compile(r"^-\s*(?:\[[^\]]+\]|\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2})"
+                    r"\s*(?:→|->|=>)\s*[^@:][^:]*:\s*\S")
 SLASH_ADDR = re.compile(r"^-\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\s*→\s*[^:]*[/,;][^:]*:")
+
+
+def addr_without_at(line):
+    """AN-05 (2026-11-10): канон-строка, но адресат БЕЗ `@` — мост (`lib/parse.js`) такую
+    НЕ доставит: адресат ищется по `@`. Линтер её «понимает», поэтому класс терялся молча
+    (случай: моя же строка `→ te:` в lm.md не дошла до @TE).
+    Смотрим ТОЛЬКО первую стрелку: в тексте сообщений `→` встречается как «следовательно».
+    """
+    if not CANON.match(line):
+        return False
+    m = re.search(r"(?:→|->|=>)", line)
+    if not m:
+        return False
+    rest = line[m.end():].lstrip()
+    return rest[:1] == "" or rest[:1] != "@"
 
 
 def count_tolerant(chat_dir, known_roles):
@@ -137,6 +156,7 @@ def count_tolerant(chat_dir, known_roles):
     tolerant = 0
     total = 0
     slash = 0
+    no_at = 0
     for name in sorted(os.listdir(chat_dir)):
         if not name.endswith(".md") or name.lower() in SKIP:
             continue
@@ -152,7 +172,9 @@ def count_tolerant(chat_dir, known_roles):
                     tolerant += 1
                 if SLASH_ADDR.match(stripped):
                     slash += 1
-    return tolerant, total, slash
+                if addr_without_at(stripped):
+                    no_at += 1
+    return tolerant, total, slash, no_at
 
 
 TS_ANY = re.compile(r"-\s*\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]")
@@ -394,6 +416,8 @@ def main():
     parser.add_argument("--config", default=os.path.join(HERE, "..", "loop.config.json"))
     parser.add_argument("--report", action="store_true", help="только показать")
     parser.add_argument("--check", action="store_true", help="код 1 при находках (CI)")
+    parser.add_argument("--fail-no-at", action="store_true",
+                        help="AN-05: адресат без `@` не доставляется — считать ошибкой")
     parser.add_argument("--strict-times", action="store_true",
                         help="метки в будущем и немонотонные — ошибка (по умолчанию предупреждение)")
     parser.add_argument("--strict", action="store_true",
@@ -498,12 +522,15 @@ def main():
         print("нераспознанных строк: %d (новых: %d)" % (len(problems), len(fresh)))
         for name, role, line in problems[:20]:
             print("  %s [%s]: %s" % (name, role, line[:120]))
-        tolerant, total_msgs, slash = count_tolerant(chat_dir, set(titles.keys()))
+        tolerant, total_msgs, slash, no_at = count_tolerant(chat_dir, set(titles.keys()))
         if tolerant:
             print("формат: %d из %d сообщений не каноном (без скобок, `->` или без `@`) —"
                   " распознаются, но пишем канон `- [YYYY-MM-DD HH:mm] → @role: текст`"
                   % (tolerant, total_msgs))
         if slash:
+            if no_at:
+                print("::warning::адресат без `@`: %d строк — мост их НЕ доставит "
+                      "(адресат ищется по `@`); канон: `→ @роль: текст`" % no_at)
             print("адресаты: %d сообщений через `/`/`,` — канон `+`; мост теперь понимает и `/`, "
                   "но чужие регексы — нет" % slash)
         if future or order:
@@ -529,6 +556,8 @@ def main():
             for name, raw in invalid_grand[:5]:
                 print("  [grandfathered] %s: [%s]" % (name, raw))
         bad = problems or bool(invalid) or ((future or order) and args.strict_times)
+        if getattr(args, "fail_no_at", False) and no_at:
+            return 1
         return 1 if bad and args.check else 0
 
     if not fresh:
