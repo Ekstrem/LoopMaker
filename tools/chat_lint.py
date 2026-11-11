@@ -177,6 +177,40 @@ def count_tolerant(chat_dir, known_roles):
     return tolerant, total, slash, no_at
 
 
+def count_no_at_since(chat_dir, known_roles, since):
+    """AN-05/AR-023 (2026-11-11): НОВЫЕ строки, которые мост реально не доставит.
+
+    Адресат без `@` (parse.js ищет по `@`) и адресат через `/`/`,` (канон `+`) —
+    раньше считались «терпимым дрейфом» и не валили `--check`. Теперь для строк
+    С меткой >= `since` это ошибка: рецепт дефекта должен краснеть.
+    """
+    no_at = slash = 0
+    for name in sorted(os.listdir(chat_dir)):
+        if not name.endswith(".md") or name.lower() in SKIP:
+            continue
+        if name[:-3].lower() not in known_roles:
+            continue
+        with open(os.path.join(chat_dir, name), encoding="utf-8-sig") as handle:
+            for line in handle:
+                stripped = line.strip()
+                if not CANON.match(stripped):
+                    continue
+                m = TS_ANY.match(stripped)
+                if not m:
+                    continue
+                try:
+                    ts = datetime.datetime.strptime(m.group(1), "%Y-%m-%d %H:%M")
+                except ValueError:
+                    continue
+                if ts < since:
+                    continue
+                if SLASH_ADDR.match(stripped):
+                    slash += 1
+                if addr_without_at(stripped):
+                    no_at += 1
+    return no_at, slash
+
+
 TS_ANY = re.compile(r"-\s*\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]")
 
 
@@ -555,7 +589,14 @@ def main():
                   " rc не красят (@LM 2026-11-11)" % len(invalid_grand))
             for name, raw in invalid_grand[:5]:
                 print("  [grandfathered] %s: [%s]" % (name, raw))
-        bad = problems or bool(invalid) or ((future or order) and args.strict_times)
+        new_no_at, new_slash = count_no_at_since(chat_dir, set(titles.keys()), order_since)
+        if new_no_at:
+            print("адресат без `@` (новых, метка >= %s): %d — мост их НЕ доставит; канон `→ @роль:`"
+                  % (order_since.strftime("%Y-%m-%d"), new_no_at))
+        if new_slash:
+            print("адресат через `/`/`,` (новых): %d — канон `+`" % new_slash)
+        bad = (problems or bool(invalid) or ((future or order) and args.strict_times)
+               or new_no_at or new_slash)
         if getattr(args, "fail_no_at", False) and no_at:
             return 1
         return 1 if bad and args.check else 0
