@@ -161,6 +161,43 @@ def digest_selftest():
     print("check_paths --selftest: %d/%d" % (ok, len(cases)))
     return 0 if ok == len(cases) else 1
 
+def cmd_index(cfg):
+    """pre-commit (PDR-044): staged-файлы должны принадлежать НЕ БОЛЕЕ чем одной роли
+    (координатор не считается — его зона перекрывает всех), и не выходить за зоны."""
+    staged = [f.replace("\\", "/") for f in git("diff", "--cached", "--name-only").splitlines() if f.strip()]
+    if not staged:
+        print("commit-guard: staged-файлов нет")
+        return 0
+    coord = cfg.get("coordinator", "tl")
+    shared = cfg.get("shared", [])
+    zones = cfg.get("zones") or {}
+    owners = set()
+    out = []
+    for path in staged:
+        if path.rsplit("/", 1)[-1] == "AGENTS.md" or matches(path, shared):
+            continue  # общий файл
+        owned = {r for r in zones
+                 if matches(path, list(zones[r].get("core", [])) + list(zones[r].get("service", [])))}
+        owned.discard(coord)
+        if owned:
+            owners.update(owned)
+        elif not matches(path, cfg.get("coordinator_zone", [])):
+            out.append(path)
+    errs = []
+    if out:
+        errs.append("вне зоны: " + ", ".join(out[:8]))
+    if len(owners) > 1:
+        errs.append("файлы разных ролей в одном коммите: " + ", ".join(sorted(owners)))
+    if errs:
+        print("commit-guard: ЗАПРЕТ")
+        for e in errs:
+            print("  " + e)
+        print("  сними чужое: git restore --staged <путь>; коммить: git commit -- <свои пути>")
+        return 1
+    print("commit-guard: staged %d файл(ов), пересечений зон нет" % len(staged))
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--range", default="HEAD~1..HEAD")
@@ -168,6 +205,7 @@ def main():
     ap.add_argument("--zones", action="store_true", help="показать карту зон и выйти")
     ap.add_argument("--strict", action="store_true",
                     help="только ядро — без папок задач и чата")
+    ap.add_argument("--index", action="store_true", help="pre-commit: проверить staged-индекс")
     ap.add_argument("--config", default=None)
     ap.add_argument("--selftest", action="store_true", help="самопроверка правила сводки")
     ap.add_argument("--quiet", action="store_true")
@@ -191,6 +229,9 @@ def main():
 
     if a.selftest:
         return digest_selftest()
+
+    if a.index:
+        return cmd_index(cfg)
 
     commits = read_commits(a.range)
     if not commits:
