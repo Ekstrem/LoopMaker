@@ -214,6 +214,31 @@ def count_no_at_since(chat_dir, known_roles, since):
 TS_ANY = re.compile(r"-\s*\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]")
 
 
+def count_garbage_stamp(chat_dir, known_roles):
+    """DO/AR-023 (2026-11-11): скобки есть, но внутри не `YYYY-MM-DD HH:mm`.
+
+    CANON признаёт ЛЮБЫЕ скобки, поэтому `- [без метки] -> @TE: текст` не попадал ни
+    в «нераспознанные» (скобки есть), ни в «невалидное время» (не парсится как время).
+    Считаем такой дрейф ошибкой: метка — канон, а не произвольный текст.
+    """
+    stamp = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
+    bad = []
+    for name in sorted(os.listdir(chat_dir)):
+        if not name.endswith(".md") or name.lower() in SKIP:
+            continue
+        if name[:-3].lower() not in known_roles:
+            continue
+        with open(os.path.join(chat_dir, name), encoding="utf-8-sig") as handle:
+            for lineno, line in enumerate(handle, 1):
+                stripped = line.strip()
+                m = CANON.match(stripped)
+                if not m or m.group(1) is None:
+                    continue
+                if not stamp.match(m.group(1).strip()):
+                    bad.append((name, lineno, m.group(1)))
+    return bad
+
+
 def chat_max_stamp(chat_dir):
     """Максимальная метка в чате — шкала, которую реально использует проект.
 
@@ -595,8 +620,14 @@ def main():
                   % (order_since.strftime("%Y-%m-%d"), new_no_at))
         if new_slash:
             print("адресат через `/`/`,` (новых): %d — канон `+`" % new_slash)
+        garbage = count_garbage_stamp(chat_dir, set(titles.keys()))
+        if garbage:
+            print("метка не по канону (скобки не `YYYY-MM-DD HH:mm`): %d строк — канон `- [ГГГГ-ММ-ДД ЧЧ:ММ] → @роль: текст`"
+                  % len(garbage))
+            for name, ln, s in garbage[:5]:
+                print("  %s:%d — «%s»" % (name, ln, s))
         bad = (problems or bool(invalid) or ((future or order) and args.strict_times)
-               or new_no_at or new_slash)
+               or new_no_at or new_slash or garbage)
         if getattr(args, "fail_no_at", False) and no_at:
             return 1
         return 1 if bad and args.check else 0
