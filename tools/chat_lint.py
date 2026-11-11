@@ -470,6 +470,35 @@ def notice(role, titles, line, now):
     )
 
 
+def selftest():
+    """AR-023: chat_lint доказывает, что умеет краснеть на собственном дефекте."""
+    ok = total = 0
+
+    def case(cond, label):
+        nonlocal ok, total
+        total += 1
+        if cond:
+            ok += 1
+        else:
+            print("  [FAIL] %s" % label)
+
+    stamp = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
+
+    def is_garbage(line):
+        m = CANON.match(line.strip())
+        return bool(m and m.group(1) is not None and not stamp.match(m.group(1).strip()))
+
+    case(not addr_without_at('- [2026-11-11 20:00] → @TL: текст'), 'адрес с @ — не флаг')
+    case(addr_without_at('- [2026-11-11 20:00] → TL: текст'), 'адрес без @ — флаг (AN-05)')
+    case(not addr_without_at('не сообщение без стрелки'), 'не-сообщение — не флаг')
+    case(not is_garbage('- [2026-11-11 20:00] → @TL: x'), 'валидная метка — не мусор')
+    case(is_garbage('- [без метки] -> @TE: x'), 'метка-мусор ловится (DO/AR-023)')
+    case(not is_garbage('- 2026-11-11 20:00 → @AR: x'), 'bare-метка — не мусор')
+    case(CANON.match('- [2026-11-11 20:00] → @AR + @DO: x') is not None, 'мультиадресат + распознаётся')
+    print('chat_lint --selftest: %d/%d' % (ok, total))
+    return 0 if ok == total else 1
+
+
 def main():
     parser = argparse.ArgumentParser(description="Линтер формата чата ролей")
     parser.add_argument("--config", default=os.path.join(HERE, "..", "loop.config.json"))
@@ -489,12 +518,16 @@ def main():
                         help="показать точные дубли сообщений в одном outbox (код 1, если есть)")
     parser.add_argument("--next-stamp", action="store_true",
                         help="напечатать метку для новой строки (максимум по чату + 1 минута)")
+    parser.add_argument("--selftest", action="store_true", help="самопроверка детекторов (AR-023)")
     args = parser.parse_args()
 
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
+
+    if args.selftest:
+        return selftest()
 
     if args.multiline:
         chat_dir0, _, _cfg0 = load_config(args.config)
