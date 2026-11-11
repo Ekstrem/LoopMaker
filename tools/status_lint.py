@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# КОПИЯ из LoopMaker/status_lint.py (источник правды там; правка — в обоих местах).
 """Линтер статусов задачи: значение из списка + обязательные поля под статус.
 
 Зачем: пока статусы — «правило на честном слове», в файлах живут синонимы и пустые
@@ -57,7 +58,7 @@ DEFAULT_RULES = {
     "ToDo": ["Приоритет"],
     "В работе": ["В работе с"],
     "В паузе": ["Пауза", "Разблокирует"],
-    "На проверке": ["Проверяет"],
+    "На проверке": ["Проверяет", "На проверке с"],
     "Закрыта": ["Результат"],
     "Отклонена": ["Причина"],
 }
@@ -125,6 +126,29 @@ def self_review(rel, text):
             break
     if got and got == author:
         return (author, got)
+    return None
+
+
+VALID_REVIEWERS = {"ar", "do", "po", "tl", "lm"}
+
+
+def reviewer_format(text):
+    """§2.1 (владелец 2026-11-11): `Проверяет:` = один доменный ревьюер @AR/@DO/@PO/@TL.
+
+    Примечания в поле запрещены (они ломают «на ком зависает»). Возвращает
+    строку-проблему или None.
+    """
+    value = field_value(text, "Проверяет").strip()
+    if not value:
+        return None
+    tags = [x.lstrip("@").lower() for x in re.findall(r"@[A-Za-z]+", value)]
+    if len(tags) != 1:
+        return "`Проверяет:` — несколько тегов/адресатов «%s», канон: один доменный ревьюер" % value[:40]
+    if tags[0] not in VALID_REVIEWERS:
+        return "`Проверяет:` @%s — не доменный ревьюер (@AR/@DO/@PO/@TL)" % tags[0].upper()
+    leftover = re.sub(r"@[A-Za-z]+", "", value).strip(" :—–()[]")
+    if leftover:
+        return "в `Проверяет:` лишний текст «%s» — канон: один тег" % value[:40]
     return None
 
 
@@ -233,6 +257,11 @@ def main():
             problems.append({"file": rel, "status": value, "level": "warn",
                              "problem": "саморевью: автор @%s и `Проверяет: @%s` (§2.1 п.6)"
                                         % (author.upper(), got.upper())})
+        if value == "На проверке":
+            fmt = reviewer_format(text)
+            if fmt:
+                problems.append({"file": rel, "status": value, "level": "warn",
+                                 "problem": fmt})
 
     if grandfathered and not args.json:
         print("[grandfathered] %d предупреждений в карточках, изменённых ДО порога —"
