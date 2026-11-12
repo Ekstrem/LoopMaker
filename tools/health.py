@@ -30,6 +30,7 @@ import re
 import statistics
 import subprocess
 import sys
+import collections
 import time
 from datetime import datetime, timezone
 
@@ -520,6 +521,90 @@ def spark(values):
     return "".join(SPARK[min(7, int((v - lo) / (hi - lo) * 7))] for v in vals)
 
 
+
+def norm_dwell_status(raw):
+    """Канонизация статуса из git-диффа (синонимы → 8 статусов)."""
+    s = re.split(r"[([\[]", raw.strip())[0].strip()
+    for k, v in (("Открыта", "В работе"), ("Выполнена", "Закрыта"),
+                 ("Готово", "Закрыта"), ("Done", "Закрыта"), ("Пауза", "В паузе")):
+        if s.lower().startswith(k.lower()):
+            return v
+    for st in ("Идея", "На проработке", "ToDo", "В работе", "В паузе",
+               "На проверке", "Закрыта", "Отклонена"):
+        if s == st or s.startswith(st):
+            return st
+    return s.split()[0] if s else "?"
+
+
+def _card_transitions(root, rel):
+    """[(ts, status)] переходов статуса одной карточки, хронологически."""
+    _rc, out = sh(root, ["git", "log", "-p", "-G", "Статус:", "--format=%ct", "--", rel])
+    seq, cur = [], None
+    for line in (out or "").splitlines():
+        s = line.strip()
+        if re.match(r"^\d{9,}$", s):
+            cur = int(s)
+        else:
+            m = re.match(r"^\+\s*-?\s*\*\*Статус:?\*\*\s*(.+)", line)
+            if m and cur is not None:
+                st = norm_dwell_status(m.group(1))
+                if not seq or seq[-1][1] != st:
+                    seq.append((cur, st))
+    seq.reverse()
+    return seq
+
+
+def metric_status_dwell(root, cfg):
+    """Медиана дней в каждом статусе по git-переходам, с кешем по blob-sha.
+
+    Полный пересчёт `git log -p -G` на каждую карточку ≈ минуты; кеш
+    `health/dwell-cache.json` пересчитывает только изменившиеся карточки.
+    Возвращает {статус: медиана_дней}.
+    """
+    backlog = cfg.get("backlog") or "5-backlog"
+    cache_file = os.path.join(root, "health", "dwell-cache.json")
+    cache = {}
+    try:
+        with open(cache_file, encoding="utf-8") as f:
+            cache = json.load(f)
+    except (OSError, ValueError):
+        cache = {}
+
+    _rc, tree = sh(root, ["git", "ls-tree", "-r", "origin/main", "--", backlog])
+    blob = {}
+    for line in (tree or "").splitlines():
+        p = line.split()
+        if len(p) >= 4 and "/chat/" not in p[3] and re.search(r"[A-Z]{2}-\d+\.md$", p[3]):
+            blob[p[3]] = p[2]
+
+    dwell = collections.defaultdict(list)
+    for rel, bsha in blob.items():
+        ent = cache.get(rel)
+        if isinstance(ent, dict) and ent.get("blob") == bsha:
+            trans = ent.get("trans", [])
+        else:
+            trans = _card_transitions(root, rel)
+            cache[rel] = {"blob": bsha, "trans": trans}
+        for i in range(len(trans) - 1):
+            t1, s1 = trans[i]
+            t2, s2 = trans[i + 1]
+            d = (t2 - t1) / 86400.0
+            if 0 <= d < 400:
+                dwell[s1].append(d)
+
+    try:
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump(cache, f)
+    except OSError:
+        pass
+
+    out = {}
+    for s in ("В работе", "На проверке", "В паузе"):
+        if dwell.get(s):
+            out[s] = round(statistics.median(dwell[s]), 2)
+    return out
+
+
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -555,6 +640,7 @@ def main():
     lm_med, lm_n = metric_lm_sla(root, cfg)
     wip_share, wip_n = metric_wip_share(root)
     fmt_tol, fmt_total = metric_chat_format(root)
+    dwell = metric_status_dwell(root, cfg)
 
     now = datetime.now(timezone.utc)
     row = {
@@ -579,6 +665,9 @@ def main():
         "chat_format_tolerant": fmt_tol,
         "chat_format_total": fmt_total,
         "drift_total": drift_total,
+        "dwell_work": dwell.get("В работе"),
+        "dwell_review": dwell.get("На проверке"),
+        "dwell_pause": dwell.get("В паузе"),
     }
 
     mark, reasons = verdict(errors or 0, stale or 0, gates_bad, p95, inbox)
@@ -624,6 +713,10 @@ def main():
             "n/a" if cycle_med is None else "%.1f (n=%d%s)" % (
                 cycle_med, cycle_n, "" if not cycle_missing else ", без дат %d" % cycle_missing),
             "🟢" if (cycle_med is not None and cycle_med < 7) else "🟡"),
+        "| Время в статусах, медиана (дн) | %s | ревью < 1 | %s |" % (
+            "n/a" if not dwell else "работа %s · ревью %s · пауза %s" % (
+                dwell.get("В работе", "—"), dwell.get("На проверке", "—"), dwell.get("В паузе", "—")),
+            "🟡" if dwell.get("На проверке", 0) and dwell["На проверке"] >= 1 else "🟢"),
         "| Ответ @LM, медиана (мин) | %s | < 30 | %s |" % (
             "нет данных" if lm_med is None else "%.0f (n=%d)" % (lm_med, lm_n),
             "⚪ нет данных" if lm_med is None else ("🟢" if lm_med < 30 else "🟡")),
