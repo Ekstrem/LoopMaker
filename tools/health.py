@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# КОПИЯ из LoopMaker/health.py (источник правды там; правка — в обоих местах).
 """Дашборд «здоровье петли»: пять чисел, которые видно без чтения чата.
 
 Идея: не заводить новые метрики, а собрать те, что уже считаются гейтами, в одну
@@ -53,23 +54,34 @@ def load_config(root):
         return json.load(f)
 
 
-def run(root, args):
-    """Запустить инструмент из tools/ и вернуть (rc, stdout)."""
+def run(root, args, timeout=30):
+    """Запустить инструмент из tools/ и вернуть (rc, stdout).
+
+    Таймаут (2026-11-12): часть гейтов (chat_lint --check, sweep) делают тяжёлые
+    git-операции и вешали дашборд. При таймауте — честное «не измерено» (rc=2),
+    дашборд не должен зависать из-за одного медленного инструмента.
+    """
     cmd = [sys.executable] + args
     try:
         p = subprocess.run(cmd, cwd=root, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", check=False)
+                           encoding="utf-8", errors="replace", check=False,
+                           timeout=timeout)
         return p.returncode, p.stdout
+    except subprocess.TimeoutExpired:
+        return 2, ""
     except OSError as e:
         return 1, str(e)
 
 
-def sh(root, args):
+def sh(root, args, timeout=30):
     """Внешняя команда (git) в корне проекта: (rc, stdout)."""
     try:
         p = subprocess.run(args, cwd=root, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", check=False)
+                           encoding="utf-8", errors="replace", check=False,
+                           timeout=timeout)
         return p.returncode, p.stdout
+    except subprocess.TimeoutExpired:
+        return 2, ""
     except OSError as e:
         return 1, str(e)
 
@@ -244,34 +256,52 @@ def metric_review_domain(root, cfg):
 def metric_cycle(root, cfg):
     """Lead time закрытых задач: медиана дней от первой версии файла до закрытия.
 
-    Источник — git, а не поля задач: поле `В работе с` заполнено лишь у 3 из 115
-    закрытых задач (и часто содержит дату из будущего), поэтому метрика на нём
-    давала n/a. Первый коммит файла ≈ момент, когда задача появилась; последний —
-    когда её закрыли.
+    Источник — git, а не поля задач. Оптимизация (2026-11-12): раньше для каждой
+    закрытой карточки делались 2 `git log` (≈662 вызова ≈ 80 с) — дашборд вешался.
+    Теперь два `git log --name-only` на весь бэклог, первый/последний коммит файла
+    парсится из списка путей.
     """
     backlog = cfg.get("backlog") or "5-backlog"
-    days = []
-    skipped = 0
+    files = []
     for path in sorted(glob.glob(os.path.join(root, backlog, "*", "*.md"))):
         rel = os.path.relpath(path, root).replace("\\", "/")
         if "/chat/" in rel:
             continue
         with open(path, encoding="utf-8-sig") as f:
             head = f.read(2000)
-        if "Закрыта" not in head:
-            continue
-        rc1, first = sh(root, ["git", "log", "--diff-filter=A", "--format=%at", "--", rel])
-        rc2, last = sh(root, ["git", "log", "-1", "--format=%at", "--", rel])
-        if rc1 != 0 or rc2 != 0 or not first.strip() or not last.strip():
+        if "Закрыта" in head:
+            files.append(rel)
+    if not files:
+        return None, 0, 0
+
+    def first_touch(args):
+        """{файл: unix-время} по первому появлению в `git log --name-only`."""
+        out_map = {}
+        rc, out = sh(root, ["git", "log", "--format=%at", "--name-only"] + args)
+        if rc != 0:
+            return out_map
+        cur = None
+        for raw in out.splitlines():
+            s = raw.strip()
+            if s.isdigit():
+                cur = int(s)
+            elif s and cur is not None:
+                rel2 = s.replace("\\", "/")
+                if rel2 not in out_map:
+                    out_map[rel2] = cur
+        return out_map
+
+    created = first_touch(["--diff-filter=A", "--reverse", "--", backlog])
+    closed = first_touch(["--", backlog])
+
+    days, skipped = [], 0
+    for rel in files:
+        c1 = created.get(rel)
+        c2 = closed.get(rel)
+        if c1 is None or c2 is None:
             skipped += 1
             continue
-        try:
-            created = datetime.fromtimestamp(int(first.splitlines()[-1].strip()))
-            closed = datetime.fromtimestamp(int(last.strip().splitlines()[0]))
-        except ValueError:
-            skipped += 1
-            continue
-        delta = (closed - created).total_seconds() / 86400.0
+        delta = (c2 - c1) / 86400.0
         if 0 <= delta < 400:
             days.append(delta)
         else:
@@ -299,9 +329,21 @@ def metric_lm_sla(root, cfg):
     Q = re.compile(r"→\s*@lm\b", re.I)
     R = re.compile(r"→\s*@(\w+)", re.I)
 
-    def line_times(path):
-        """[(unixtime, text)] для каждой строки файла; None, если блейм недоступен."""
-        rc, out = sh(root, ["git", "blame", "--line-porcelain", "--", path])
+    def line_times(path, limit=500):
+        """[(unixtime, text)] для последних `limit` строк файла; None, если блейм недоступен.
+
+        Дефект (2026-11-12): полный `git blame --line-porcelain` на весь чат (6326 строк)
+        стал квадратично медленным и вешал `health.py` (>2 мин). Блеймим только хвост
+        (последние `limit` строк) через `-L` — для медианы SLA свежих ответов хватает.
+        """
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as f:
+                total = sum(1 for _ in f)
+        except OSError:
+            return None
+        start = max(1, total - limit + 1)
+        rc, out = sh(root, ["git", "blame", "--line-porcelain",
+                            "-L", "%d,%d" % (start, total), "--", path])
         if rc != 0 or not out:
             return None
         times, cur = [], None
