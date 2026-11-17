@@ -357,13 +357,12 @@ def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0, use
     Не ошибка формата: старые файлы писались «по памяти» и уехали вперёд,
     поэтому по умолчанию это предупреждения (см. --strict-times).
 
-    Две шкалы, и их нельзя путать (иначе правило «максимум по чату + 1 минута»
-    невыполнимо):
-      * ПРОВЕРЯЕМАЯ зона — строки после маркера «метка = часы машины»; только они
-        могут получить вердикт "future".
-      * ОПОРА — максимум по ВСЕМУ чату, включая легаси до маркера: другие роли
-        пишут в своей зоне, и если опора смотрит только в проверяемую зону,
-        любая свежая метка выглядит «впереди» на дни.
+    Порядок проверяется по ВСЕМУ файлу, без маркера «метка = часы машины»:
+    раньше гейт смотрел только строки после маркера, и файлы без маркера (или с
+    маркером, уехавшим в середину при сортировке ботом) выпадали из проверки
+    (DO-138 дефект 5). Легаси до ORDER_CUTOFF — грандфазеринг, не ошибка.
+    ОПОРА для «впереди шкалы» — максимум по всему чату (все файлы) + часы: иначе
+    роль, пишущая в свежей шкале, выглядит «впереди» на дни.
     """
     future, order, grandfathered = [], [], []
     collected = []
@@ -375,13 +374,8 @@ def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0, use
         if role not in known_roles:
             continue
         prev = None
-        new_scale = False
         with open(os.path.join(chat_dir, name), encoding="utf-8-sig") as handle:
             for line in handle:
-                if "метка = часы машины" in line:
-                    new_scale = True
-                    prev = None
-                    continue
                 m = TS_CANON.match(line.strip())
                 if not m:
                     continue
@@ -392,8 +386,6 @@ def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0, use
                     continue
                 if ts > global_max.get(name, ts):
                     global_max[name] = ts
-                if not new_scale:
-                    continue
                 if prev is not None and ts < prev:
                     # Решение @TL 2026-11-11: историю НЕ переписываем. Строки ДО ORDER_CUTOFF —
                     # grandfathered: печатаются как след, но rc не красят. После cutoff — проверяются.
