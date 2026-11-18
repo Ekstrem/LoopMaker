@@ -8,11 +8,14 @@
 (объединение: центральные строки сохраняются, добавляются только новые из worktree).
 Дальше бот сам прочитает центр, доставит и закоммитит.
 
-Запуск (в фоне, в отдельном окне/сессии):
-    python chat_sync.py [--interval 5]
+Запуск (без окна): pythonw chat_sync.py [--interval 5]
+Автозапуск: задача Windows «XDiaryChatSync» (каждые 5 мин, pythonw — окна нет).
 
 Безопасность: пишем только в центральный `chat/*.md`, читаем только worktree'и.
 Ничего не коммитим и не пушим — это делает бот.
+
+Одиночный запуск: heartbeat-lock (pid-файл + mtime). Живой экземпляр обновляет
+mtime каждую итерацию; молчание дольше LOCK_STALE секунд = экземпляр мёртв.
 """
 import argparse
 import io
@@ -23,25 +26,40 @@ import time
 ROOT = r'C:\Users\About\Documents\GitHub'
 CENTRAL = os.path.join(ROOT, 'XDiary', '5-tech-backlog', 'chat')
 ROLES = ['be', 'fe', 'do', 'te', 'ar', 'tl', 'po', 'dr']
-LOCK = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.chat_sync.pid')
+HERE = os.path.dirname(os.path.abspath(__file__))
+LOCK = os.path.join(HERE, '.chat_sync.pid')
+LOG = os.path.join(HERE, 'chat_sync.log')
+LOCK_STALE = 60  # сек: дольше — считаем экземпляр мёртвым
+
+
+def log(msg):
+    """Пишем в файл, а не в консоль: служба запускается без окна (pythonw)."""
+    try:
+        with io.open(LOG, 'a', encoding='utf-8', newline='\n') as f:
+            f.write('{} {}\n'.format(time.strftime('%Y-%m-%d %H:%M:%S'), msg))
+    except OSError:
+        pass
 
 
 def acquire_lock():
-    """Один экземпляр службы: pid-файл; если процесс жив — не стартуем."""
+    """Один экземпляр: если lock свежий — живой экземпляр есть, выходим."""
     if os.path.exists(LOCK):
         try:
-            with io.open(LOCK, encoding='ascii') as f:
-                pid = int(f.read().strip())
-            os.kill(pid, 0)  # на Windows: поднимает OSError, если процесса нет
-            return False
-        except (OSError, ValueError, IOError):
-            try:
-                os.remove(LOCK)
-            except OSError:
-                pass
+            age = time.time() - os.path.getmtime(LOCK)
+            if age < LOCK_STALE:
+                return False
+        except OSError:
+            pass
     with io.open(LOCK, 'w', encoding='ascii') as f:
         f.write(str(os.getpid()))
     return True
+
+
+def touch_lock():
+    try:
+        os.utime(LOCK, None)
+    except OSError:
+        pass
 
 
 def read_lines(path):
@@ -63,12 +81,11 @@ def sync_once():
         new = [l for l in wt_lines if l not in central_set]
         if not new:
             continue
-        # Дописываем в конец, не трогая существующие строки.
         body = '\n'.join(new)
         with io.open(central, 'a', encoding='utf-8', newline='\n') as f:
             f.write(('\n' if central_lines and central_lines[-1] else '') + body + '\n')
         moved += len(new)
-        print(f'[{time.strftime("%H:%M:%S")}] {role}: +{len(new)} строк', flush=True)
+        log(f'{role}: +{len(new)} строк')
     return moved
 
 
@@ -79,19 +96,20 @@ def main():
     args = ap.parse_args()
 
     if not args.once and not acquire_lock():
-        print('chat_sync: уже запущен, выход', flush=True)
+        log('уже запущен — выход')
         return
 
-    print('chat_sync: старт (interval={}s)'.format(args.interval), flush=True)
+    log('старт (interval={}s, pid={})'.format(args.interval, os.getpid()))
     if args.once:
         moved = sync_once()
-        print(f'chat_sync: готово, перенесено {moved} строк', flush=True)
+        log(f'готово, перенесено {moved} строк')
         return
     while True:
         try:
             sync_once()
         except Exception as exc:  # одна ошибка не должна ронять службу
-            print(f'chat_sync: ошибка {exc!r}', flush=True)
+            log(f'ошибка {exc!r}')
+        touch_lock()
         time.sleep(max(1, args.interval))
 
 

@@ -14,3 +14,5 @@ Thumbs.db
 
 # плагин
 node_modules/
+tools/.chat_sync.pid
+tools/chat_sync.log
