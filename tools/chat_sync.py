@@ -77,8 +77,11 @@ def sync_once():
         central = os.path.join(CENTRAL, f'{role}.md')
         wt_lines = [l for l in read_lines(wt) if l.strip()]
         central_lines = read_lines(central)
-        central_set = set(central_lines)
-        new = [l for l in wt_lines if l not in central_set]
+        # Дедуп по rstrip: ретро-строки из worktree могут отличаться от центральных
+        # только хвостовым пробелом — exact-дедуп их не видел и возвращал дублем
+        # каждые 5 с (D-25, ar.md 13/15-Nov 2026-11-19).
+        central_set = {l.rstrip() for l in central_lines if l.strip()}
+        new = [l for l in wt_lines if l.rstrip() not in central_set]
         if not new:
             continue
         body = '\n'.join(new)
