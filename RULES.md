@@ -318,6 +318,10 @@ python tools/health.py --no-ci         # без сети (быстро, лока
   SHA упоминаем после `git merge-base --is-ancestor`.
 - **Конкурентная работа с общим деревом** (неизменяемость git, что делать если merge
   «не подходит», почему не `reset`) — [docs/GIT-CONCURRENCY.md](docs/GIT-CONCURRENCY.md).
+- **Пока бот стоит** (нет `chat(bot): sync`): в общем дереве **не делать** `git checkout`/
+  `reset --hard`/`clean -fd` — незакоммиченные строки outbox'ов других ролей живут только
+  в рабочем дереве и эти операции сотрут их безвозвратно. Сначала дождаться синка бота
+  (или зафиксировать строки `git stash create`).
 
 **Повреждённые метаданные git** (`.git/rebase-merge` без `head-name`, «could not read
 head-name», `rebase --abort` не работает) — отдельный случай: сначала объявление в чат,
