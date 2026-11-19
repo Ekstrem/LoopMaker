@@ -653,6 +653,10 @@ def main():
                 print("  %s:%d — «%s»" % (name, ln, s))
         bad = (problems or bool(invalid) or ((future or order) and args.strict_times)
                or new_no_at or new_slash or garbage)
+        if args.strict_times and not args.check:
+            # Порядок/адресаты напечатаны выше, но rc=1 только с --check: без него
+            # «rc=0» ложно читается как «чисто» (инцидент TL 2026-11-19, два круга).
+            print("⚠️  --strict-times без --check: находки выше, но rc=0. Для гейта: --check --strict-times")
         if getattr(args, "fail_no_at", False) and no_at:
             return 1
         return 1 if bad and args.check else 0
