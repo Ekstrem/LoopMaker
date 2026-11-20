@@ -198,3 +198,24 @@ test('после перезапуска история не переотправ
   assert.equal(stage.sent.length, 1);
   revived.stop();
 });
+
+test('raw-эскалация не рендерится pointer-шаблоном (фантом «в tl.md от LoopMaker»)', async (t) => {
+  const stage = await makeStage({ config: { notifyStyle: 'pointer' } });
+  t.after(stage.cleanup);
+
+  const raw = {
+    key: 'escalation|be|hops|1',
+    target: 'tl',
+    file: 'tl',
+    from: 'LoopMaker',
+    fromRole: 'loopmaker',
+    ts: '2026-11-19 21:43',
+    raw: true,
+    text: '⚠️ переписка передана координатору',
+  };
+
+  const text = stage.bridge.buildText('tl', [raw]);
+  assert.equal(text, '⚠️ переписка передана координатору');
+  assert.ok(!text.includes('в чате tl.md'), 'raw не должен проходить через pointer-шаблон');
+});
+
