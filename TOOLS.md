@@ -131,7 +131,7 @@
 | Инструмент | Что делает | Процесс | Роли |
 |---|---|---|---|
 | `health.py` (копия) | дашборд `HEALTH.md` + `health/history.jsonl` | `health.yml` (раз в сутки) | пишет @LM |
-| `ci_metrics.py` (копия) | метрики прогонов | `ci-analytics`/вручную | пишет @LM |
+| `ci_metrics.py` (копия; в XDiary файл назван `ci-metrics.py`) | метрики прогонов | `ci-analytics`/вручную | пишет @LM |
 | `latency.py` (копия) | p50/p95/max «через шлюз/напрямую» | вручную | пишет @LM; ревью @DO |
 | `resource-usage.py` | потребление ресурсов | вручную | пишет @DO |
 | `canon_per_probe.py` | канон по пробе | `canon-stability` | пишет @LM |
