@@ -167,8 +167,9 @@
 | `lock-sync.yml` | перегенерация images.lock из реестра | push `6-msa/**`/`8-front/**` | gen_images_lock | @DO |
 | `deploy.yml` | выкатка dev/prod | dispatch/push | rollout_service, gen_images_lock | @DO |
 | `release.yml` | релиз (сборка всех сервисов) | dispatch | release_build | @DO |
-| `ci-*.yml` (≈12 сервисов) | сборка/тесты/Docker-образ одного BC | push `6-msa/BC-X/**` | dotnet build/test | @BE |
+| `ci-*.yml` (12 сервисов: `ci-journal`, `ci-partners`, `ci-catalog`, `ci-client`, `ci-daily-metrics`, `ci-garmin-gateway`, `ci-apple-health-gateway`, `ci-somatic-series`, `ci-privacy`, `ci-portability`, `ci-analytics`, `ci-api-gateway` + `ci-backend`) | сборка/тесты/Docker-образ одного BC | push `6-msa/BC-X/**` | dotnet build/test | @BE |
 | `ci-front.yml` | сборка/тест фронта | push `8-front/**` | Playwright | @FE |
+| `front-e2e-repeat.yml` | повтор E2E-прогона фронта | dispatch | Playwright | @TE |
 | `pages.yml` | прод-фронт GitHub Pages | push | vite build | @FE |
 | `openapi-registry.yml` | реестр OpenAPI | push API | snapshot_openapi | @TL |
 | `apim-auth.yml` / `apim-drift.yml` / `smoke-apim.yml` | APIM-гейты/дым | push/dispatch | check_apim_* | @DO |
