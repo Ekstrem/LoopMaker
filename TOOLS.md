@@ -179,6 +179,42 @@
 
 ---
 
+## Приложение — точный маппинг workflow → инструменты (из парсинга .github/workflows)
+
+| Workflow | Вызываемые `tools/*.py` (точный список) |
+|---|---|
+| `ci-guards.yml` | chat_lint, check_adr, check_adr_refs, check_adr_status, check_api_index, check_awaits, check_canon, check_chat_shrink, check_direct_push, check_edm, check_env_hosts, check_eventstore_registration, check_front_e2e, check_lock, check_nul, check_null_paging, check_ports, check_readstore_ddl, check_readstore_mapping, check_rule_docs, check_secrets, check_test_isolation, check_yaml_dups, gen_images_lock + test_* (4 фикстуры) |
+| `guard-tools.yml` | sync_tools |
+| `guard-paths.yml` | check_paths, check_workflow_paths |
+| `guard-secrets.yml` / `secrets-scan.yml` | check_secrets, test_check_secrets |
+| `stats.yml` | stats |
+| `status-lint.yml` | status_lint |
+| `docs-budget.yml` | check_adr, check_docs_size, check_pdr, check_rule_docs, check_test_map |
+| `sweep.yml` | sweep |
+| `whip.yml` | whip |
+| `review-whip.yml` | review_whip |
+| `sync-board.yml` | sync_board |
+| `health.yml` | health |
+| `lock-sync.yml` | gen_images_lock |
+| `deploy.yml` | check_apim_parity |
+| `apim-auth.yml` | check_service_auth |
+| `keepalive.yml` | check_keepalive |
+| `probe-watchdog.yml` | check_probe_freshness |
+| `workflow-shape.yml` | check_workflow_shape |
+
+**Не вызываются ни одним workflow (ручные/локальные/диспетчерские):**
+`chat_sync` (Task Scheduler), `chat_inbox`, `chat_rotate`, `restore_chat`, `git_sync`,
+`role_worktree`, `pr_from_branch`, `keycmp`, `migrate_statuses`, `commit_whip`, `wip`,
+`cleanup_board`, `cleanup_orphans`, `notify_owner`, `latency`, `ci_metrics`, `resource-usage`,
+`canon_per_probe`, `release`, `release_build`, `rollout_service`, `gen-hosts`, `gen_icons`,
+`gen_sample`, `snapshot_openapi`, `openapi_from_index`, `check_openapi`, `check_apim_drift`,
+`check_apim_health`, `check_backup_freshness`, `check_dbcontext_options_order`,
+`check_env_drift`, `check_eventstore_ready`, `check_owner_chat`, `check_public_entry`,
+`check_read_model_freshness`, `check_readstore_live`, `check_schema`, `check_service_auth`,
+`check_status_chat`, `check_tests_build`, `garmin_proxy`, `garmin_sync`, `what_triggers`.
+
+---
+
 ## Сводная карта процессов (схема)
 
 ```
