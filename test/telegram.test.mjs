@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { TelegramNotifier, chunked, formatDigest } from '../lib/telegram.js';
+import { TelegramNotifier, chunked, formatDigest, escapeMarkdownV2 } from '../lib/telegram.js';
 
 const silent = { debug() {}, info() {}, warn() {}, error() {} };
 
@@ -85,4 +85,25 @@ test('без чата отправка не падает и сообщения �
   notifier.push([{ key: 'k1', ts: '09:00', from: 'A', to: 'B', text: 'x' }]);
   assert.equal(await notifier.flush({ force: true }), 0);
   assert.equal(notifier.buffer.length, 1);
+});
+
+test('escapeMarkdownV2: экранирует спецсимволы, но сохраняет код в бэк-тиках', () => {
+  assert.equal(escapeMarkdownV2('a_b*c'), 'a\\_b\\*c');
+  assert.equal(escapeMarkdownV2('[2026-11-20]'), '\\[2026\\-11\\-20\\]');
+  // код в бэк-тиках не экранируется — MarkdownV2 рендерит его как код
+  assert.equal(escapeMarkdownV2('запусти `git push --force`'), 'запусти `git push --force`');
+  assert.equal(escapeMarkdownV2('```\ngit push\n```'), '```\ngit push\n```');
+});
+
+test('send: уходит parse_mode MarkdownV2', async () => {
+  const sent = [];
+  const fetchImpl = fakeFetch((method, params) => {
+    sent.push({ method, params });
+    return { ok: true, json: async () => ({ ok: true, result: true }) };
+  });
+  const notifier = new TelegramNotifier({ token: 't', chatId: '9', logger: silent, fetchImpl });
+  await notifier.send('a_b');
+  assert.equal(sent[0].method, 'sendMessage');
+  assert.equal(sent[0].params.parse_mode, 'MarkdownV2');
+  assert.equal(sent[0].params.text, 'a\\_b');
 });
