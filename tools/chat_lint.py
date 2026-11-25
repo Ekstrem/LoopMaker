@@ -397,14 +397,15 @@ def scan_times(chat_dir, known_roles, now, tolerance_min=120, shift_hours=0, use
                 prev = ts
                 collected.append((name, raw, ts))
 
+    if use_clock:
+        reference = now + datetime.timedelta(hours=shift_hours)
+    else:
+        # Опора — максимум по всему чату (все файлы, обе шкалы) и по часам.
+        # Вычисляем ОДИН раз: полный обход для каждой метки давал O(N²)
+        # и держал check-chat дольше пятиминутного таймаута job (PR #3400).
+        _all = chat_max_stamp(chat_dir)
+        reference = max([now] + list(global_max.values()) + ([_all] if _all else []))
     for name, raw, ts in collected:
-        if use_clock:
-            reference = now + datetime.timedelta(hours=shift_hours)
-        else:
-            # Опора — максимум по всему чату (все файлы, обе шкалы) и по часам:
-            # иначе роль, пишущая в новой шкале, «впереди» на дни.
-            _all = chat_max_stamp(chat_dir)
-            reference = max([now] + list(global_max.values()) + ([_all] if _all else []))
         if ts > reference + datetime.timedelta(minutes=tolerance_min):
             lag = ts - reference
             future.append((name, raw, int(lag.total_seconds() // 3600)))
@@ -491,6 +492,28 @@ def selftest():
     case(not addr_without_at('- [2026-11-25 18:00] → @all: новость'), '@all — канон (владелец, 2026-11-25)')
     case(addr_without_at('- [2026-11-25 18:00] → владелец: решение'), 'владелец без @ — ошибка для новой строки')
     case(addr_without_at('- [2026-11-25 18:00] → всем: новость'), 'всем без @ — ошибка для новой строки')
+
+    # Негативный контроль O(N²): на двух сообщениях полный обход чата для опорной
+    # метки допустим только один. До фикса было два вызова и check-chat не укладывался
+    # в пятиминутный job; после фикса вызов один независимо от числа сообщений.
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix='chat-lint-selftest-') as tmp:
+        with open(os.path.join(tmp, 'lm.md'), 'w', encoding='utf-8') as fixture:
+            fixture.write('- [2026-11-25 17:00] → @EX: первое\n'
+                          '- [2026-11-25 17:01] → @all: второе\n')
+        original_chat_max_stamp = globals()['chat_max_stamp']
+        calls = []
+
+        def counted_chat_max_stamp(path):
+            calls.append(path)
+            return original_chat_max_stamp(path)
+
+        globals()['chat_max_stamp'] = counted_chat_max_stamp
+        try:
+            scan_times(tmp, {'lm'}, datetime.datetime(2026, 11, 25, 18, 0), use_clock=False)
+        finally:
+            globals()['chat_max_stamp'] = original_chat_max_stamp
+        case(len(calls) == 1, 'scan_times: полный обход чата один раз, не на каждую метку')
     print('chat_lint --selftest: %d/%d' % (ok, total))
     return 0 if ok == total else 1
 
