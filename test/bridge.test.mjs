@@ -57,7 +57,7 @@ test('неизвестный адресат игнорируется', async (t)
   assert.deepEqual(stage.sent, []);
 });
 
-test('@ALL по умолчанию не рассылается, с broadcast — всем кроме автора', async (t) => {
+test('@ALL/@all по умолчанию не рассылается, с broadcast — всем кроме автора', async (t) => {
   const off = await makeStage({ sessions: { fe: 'sess-fe', tl: 'sess-tl' } });
   t.after(off.cleanup);
   await off.bridge.start();
@@ -71,7 +71,7 @@ test('@ALL по умолчанию не рассылается, с broadcast —
   });
   t.after(on.cleanup);
   await on.bridge.start();
-  await on.writeChat('be.md', '- [2026-11-01 10:00] → @ALL: всем привет\n');
+  await on.writeChat('be.md', '- [2026-11-01 10:00] → @all: всем привет\n');
   await on.bridge.poll();
   assert.deepEqual(on.sent.map((item) => item.sessionId).sort(), ['sess-fe', 'sess-tl']);
 });

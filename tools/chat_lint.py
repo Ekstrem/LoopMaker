@@ -487,6 +487,10 @@ def selftest():
     case(is_garbage('- [без метки] -> @TE: x'), 'метка-мусор ловится (DO/AR-023)')
     case(not is_garbage('- 2026-11-11 20:00 → @AR: x'), 'bare-метка — не мусор')
     case(CANON.match('- [2026-11-11 20:00] → @AR + @DO: x') is not None, 'мультиадресат + распознаётся')
+    case(not addr_without_at('- [2026-11-25 18:00] → @EX: решение'), '@EX — канон (владелец, 2026-11-25)')
+    case(not addr_without_at('- [2026-11-25 18:00] → @all: новость'), '@all — канон (владелец, 2026-11-25)')
+    case(addr_without_at('- [2026-11-25 18:00] → владелец: решение'), 'владелец без @ — ошибка для новой строки')
+    case(addr_without_at('- [2026-11-25 18:00] → всем: новость'), 'всем без @ — ошибка для новой строки')
     print('chat_lint --selftest: %d/%d' % (ok, total))
     return 0 if ok == total else 1
 
