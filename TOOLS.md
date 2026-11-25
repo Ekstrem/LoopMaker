@@ -249,4 +249,4 @@ merge.js / авто-мерж ──▶ main
 - `chat_sync` → `bridge` → `git.js` → `merge.js` (доставка чата без ручной пересылки);
 - `sync_tools` → манифест `tools/.sources.json` → `guard-tools` (копии не расходятся);
 - `gen_images_lock` → `images.lock` → `lock-sync` → `deploy` → `lock-published` (выкатка);
-- токены: `ghp_…` (классический, GHT.md) — роли/бот/merge; `PROJECT_PAT` (Secrets, `issues:write`) — sync-board; **PR-создание в workflow требует `pull_requests:write`** (сейчас PROJECT_PAT его не имеет — см. инцидент 2026-11-20).
+- токены: классический PAT из локального хранилища — роли/бот/merge; `PROJECT_PAT` (Secrets, включая `issues:write` и `pull_requests:write`) — sync-board и PR-создание из workflow. Обновлён 2026-11-25 без раскрытия значения; сквозное доказательство — health run `45639606344` создал PR `#3399` (смержен).
